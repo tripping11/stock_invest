@@ -1402,5 +1402,40 @@ class VCRFStateHistoryTests(unittest.TestCase):
         self.assertTrue(reason)
 
 
+class VCRFDriverStackTests(unittest.TestCase):
+    def test_sector_route_resolves_from_active_sector_classification(self) -> None:
+        from utils.primary_type_router import resolve_sector_route
+
+        route = resolve_sector_route(
+            "600348",
+            {"行业": "煤炭", "主营业务": "煤炭开采与销售"},
+            revenue_records=[{"主营构成": "煤炭", "主营收入": 85}],
+        )
+        self.assertEqual(route["sector_route"], "core_resource")
+
+    def test_turnaround_routing_wins_when_losses_and_repair_evidence_exist(self) -> None:
+        from utils.primary_type_router import determine_primary_type
+
+        primary_type, confidence = determine_primary_type(
+            sector_route="core_resource",
+            preliminary_cycle_state="repair",
+            financials_3y={"losses_2y": True, "repair_evidence": True},
+            tags=[],
+            events={},
+            big_bath_result={"verdict": "inconclusive"},
+        )
+        self.assertEqual(primary_type, "turnaround")
+        self.assertGreaterEqual(confidence, 0.75)
+
+    def test_missing_survival_boundary_caps_state_at_cold_storage(self) -> None:
+        from validators.universal_gate import _apply_degradation_caps
+
+        adjusted = _apply_degradation_caps(
+            proposed_state="ATTACK",
+            component_availability={"survival_boundary": "missing"},
+        )
+        self.assertEqual(adjusted, "COLD_STORAGE")
+
+
 if __name__ == "__main__":
     unittest.main()

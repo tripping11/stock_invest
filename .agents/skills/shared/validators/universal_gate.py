@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from utils.config_loader import load_scoring_rules
+from utils.config_loader import load_scoring_rules, load_vcrf_degradation
 from utils.financial_snapshot import (
     extract_latest_price,
     extract_market_cap,
@@ -65,6 +65,13 @@ def _load_dimension_max() -> dict[str, float]:
 
 
 DIMENSION_MAX = _load_dimension_max()
+_STATE_ORDER = {
+    "REJECT": 0,
+    "COLD_STORAGE": 1,
+    "READY": 2,
+    "ATTACK": 3,
+    "HARVEST": 4,
+}
 
 
 def _status_from_score(score: float, passing: float, caution: float) -> str:
@@ -73,6 +80,21 @@ def _status_from_score(score: float, passing: float, caution: float) -> str:
     if score >= caution:
         return "caution"
     return "fail"
+
+
+def _apply_degradation_caps(proposed_state: str, component_availability: dict[str, str]) -> str:
+    degradation = load_vcrf_degradation().get("degradation_rules", {})
+    current_state = str(proposed_state or "REJECT").upper()
+    current_rank = _STATE_ORDER.get(current_state, 0)
+    for component, availability in component_availability.items():
+        if str(availability).lower() != "missing":
+            continue
+        rule = (degradation.get("underwrite", {}) or {}).get(component, {})
+        cap_state = str(rule.get("cap_state", "")).upper()
+        if cap_state and _STATE_ORDER.get(cap_state, current_rank) < current_rank:
+            current_state = cap_state
+            current_rank = _STATE_ORDER[cap_state]
+    return current_state
 
 
 def _valuation_score(primary_type: str, pb: float | None, current_vs_high: float | None) -> tuple[float, str]:

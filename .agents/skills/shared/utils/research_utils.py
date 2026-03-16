@@ -24,6 +24,7 @@ from utils.opportunity_classifier import (  # noqa: F401
     assess_business_purity,
     classify_state_ownership,
 )
+from utils.primary_type_router import build_driver_stack, determine_primary_type, resolve_sector_route  # noqa: F401
 from utils.value_utils import (  # noqa: F401
     _pick_revenue_col,
     normalize_text,
@@ -53,6 +54,8 @@ __all__ = [
     "extract_market_cap",
     "get_latest_balance_snapshot",
     "get_latest_income_snapshot",
+    "build_driver_stack",
+    "determine_primary_type",
     "get_manifest_field_entry",
     "is_usable_status",
     "load_source_registry",
@@ -60,6 +63,7 @@ __all__ = [
     "manifest_field_status",
     "normalize_text",
     "now_ts",
+    "resolve_sector_route",
     "safe_float",
     "select_latest_record",
 ]
