@@ -2,12 +2,20 @@ opportunity_types:
   compounder:
     label: "Compounder"
     methods:
-      - owner_earnings_pe
-      - dcf_sanity_check
+      floor_case: owner_earnings_no_growth
+      normalized_case: owner_earnings_fair_multiple
+      recognition_case: premium_quality_multiple
+    case_multiples:
+      floor: 12
+      normalized: 18
+      recognition: 24
     multiples:
       bear: 12
       base: 18
       bull: 24
+      floor: 12
+      normalized: 18
+      recognition: 24
     growth_assumptions:
       bear: "flat earnings, no rerating"
       base: "mid-single-digit growth with stable returns"
@@ -15,12 +23,20 @@ opportunity_types:
   cyclical:
     label: "Cyclical"
     methods:
-      - normalized_earnings
-      - mid_cycle_pe
+      floor_case: tangible_book_or_replacement_cost
+      normalized_case: mid_cycle_earnings
+      recognition_case: rerated_mid_cycle_earnings
+    case_multiples:
+      floor: 0.85
+      normalized: 9
+      recognition: 12
     multiples:
       bear: 6
       base: 9
       bull: 12
+      floor: 0.85
+      normalized: 9
+      recognition: 12
     normalized_haircuts:
       bear: 0.75
       base: 1.00
@@ -28,31 +44,47 @@ opportunity_types:
   turnaround:
     label: "Turnaround"
     methods:
-      - survival_value
-      - recovery_value
-      - normalized_value
+      floor_case: survival_value
+      normalized_case: repaired_earnings
+      recognition_case: post_repair_rerating
+    case_multiples:
+      floor_book: 0.7
+      normalized_pe: 10
+      recognition_pe: 14
     balance_sheet_haircuts:
       bear: 0.55
       base: 0.80
       bull: 1.00
+      floor: 0.70
     recovery_multiples:
       bear: 8
       base: 12
       bull: 16
+      normalized: 10
+      recognition: 14
   asset_play:
     label: "Asset play"
     methods:
-      - book_value
-      - nav_sanity_check
-      - replacement_cost
+      floor_case: stressed_nav
+      normalized_case: book_or_nav
+      recognition_case: discount_close
+    case_multiples:
+      floor: 0.8
+      normalized: 1.0
+      recognition: 1.2
     book_multiples:
       bear: 0.70
       base: 1.00
       bull: 1.25
+      floor: 0.80
+      normalized: 1.00
+      recognition: 1.20
   special_situation:
     label: "Special situation"
     methods:
-      - scenario_weighted_outcome
+      floor_case: downside_case_weighted
+      normalized_case: base_case_weighted
+      recognition_case: upside_case_weighted
     outcome_multiples:
       bear: 0.85
       base: 1.10
@@ -61,8 +93,27 @@ opportunity_types:
       bear: 0.35
       base: 0.60
       bull: 0.80
+      downside: 0.40
+      upside: 0.80
+
+state_thresholds:
+  cold_storage_min_floor_protection: 0.85
+  cold_storage_min_normalized_upside: 0.40
+  ready_min_normalized_upside: 0.25
+  attack_min_recognition_upside: 0.20
 
 compatibility_defaults:
+  position_state_thresholds:
+    min_floor_protection_for_seed: 0.85
+    min_normalized_upside_for_seed: 0.40
+    min_normalized_upside_for_attack: 0.25
+    min_recognition_upside_for_attack: 0.20
+  flow_stage_order:
+    abandoned: 0
+    latent: 1
+    ignition: 2
+    trend: 3
+    crowded: 4
   bottom_signal:
     deep_value_pb: 0.9
     fair_value_pb: 1.4

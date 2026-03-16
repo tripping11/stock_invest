@@ -1,47 +1,89 @@
 dimensions:
-  opportunity_type_clarity:
-    label: "Opportunity type clarity"
+  thesis_clarity:
+    label: "Thesis clarity"
     weight: 5
-    description: "Can the stock be cleanly typed before deeper work starts?"
-  business_quality:
-    label: "Business quality"
+    description: "Can the idea be underwritten in one clean sentence?"
+  intrinsic_value_floor:
+    label: "Intrinsic value floor"
     weight: 20
-    description: "How understandable, durable, and economically coherent is the business?"
+    description: "How strong is the downside floor if the wind never comes?"
   survival_boundary:
     label: "Survival boundary"
     weight: 15
-    description: "Can the company survive adverse scenarios without obvious impairment?"
-  management_capital_allocation:
-    label: "Management and capital allocation"
+    description: "Can the company survive stress without permanent impairment?"
+  governance_anti_fraud:
+    label: "Governance / anti-fraud"
     weight: 10
-    description: "Does management behave credibly and allocate capital rationally?"
+    description: "How credible are management, disclosures, and capital stewardship?"
+  business_or_asset_quality:
+    label: "Business / asset quality"
+    weight: 10
+    description: "Does the company own understandable and durable economics or real assets?"
   regime_cycle_position:
     label: "Regime / cycle position"
     weight: 15
-    description: "Does macro, industry, pricing, and policy context help or hurt the thesis?"
-  valuation_margin_of_safety:
-    label: "Valuation and margin of safety"
-    weight: 20
-    description: "Is the current price below a conservative value range?"
-  catalyst_value_realization:
-    label: "Catalyst and value realization"
+    description: "Are macro / industry / policy conditions turning in favor of the thesis?"
+  turnaround_catalyst:
+    label: "Turnaround / catalyst"
     weight: 10
-    description: "Is there a plausible path to rerating or value unlock?"
-  market_structure_tradability:
-    label: "Market structure and tradability"
-    weight: 5
-    description: "Is the name sufficiently liquid, observable, and practical to own?"
+    description: "Is there a concrete change path that can close the value gap?"
+  flow_realization_and_elasticity:
+    label: "Flow realization and elasticity"
+    weight: 15
+    description: "Can a marginal buyer show up, and will the stock move enough if they do?"
+
+weight_templates:
+  compounder:
+    intrinsic_value_floor: 20
+    survival_boundary: 15
+    governance_anti_fraud: 10
+    business_or_asset_quality: 20
+    regime_cycle_position: 10
+    turnaround_catalyst: 10
+    flow_realization_and_elasticity: 10
+  cyclical:
+    intrinsic_value_floor: 20
+    survival_boundary: 10
+    governance_anti_fraud: 10
+    business_or_asset_quality: 10
+    regime_cycle_position: 25
+    turnaround_catalyst: 10
+    flow_realization_and_elasticity: 15
+  turnaround:
+    intrinsic_value_floor: 20
+    survival_boundary: 20
+    governance_anti_fraud: 15
+    business_or_asset_quality: 5
+    regime_cycle_position: 10
+    turnaround_catalyst: 20
+    flow_realization_and_elasticity: 10
+  asset_play:
+    intrinsic_value_floor: 25
+    survival_boundary: 15
+    governance_anti_fraud: 10
+    business_or_asset_quality: 10
+    regime_cycle_position: 5
+    turnaround_catalyst: 15
+    flow_realization_and_elasticity: 15
+  special_situation:
+    intrinsic_value_floor: 15
+    survival_boundary: 15
+    governance_anti_fraud: 15
+    business_or_asset_quality: 5
+    regime_cycle_position: 5
+    turnaround_catalyst: 25
+    flow_realization_and_elasticity: 20
 
 verdict:
   - range: "85-100"
-    label: "high conviction / strong candidate"
-    action: "build aggressively if price is right"
+    label: "high conviction / attack candidate"
+    action: "build aggressively when state == ready or attack"
   - range: "75-84.99"
-    label: "reasonable candidate / starter possible"
-    action: "starter only or immediate deep dive"
+    label: "strong candidate / ready"
+    action: "starter or scale-in candidate"
   - range: "65-74.99"
-    label: "watchlist / incomplete edge"
-    action: "watch only and wait for better evidence"
+    label: "cold-storage / watchlist"
+    action: "watch or seed only"
   - range: "0-64.99"
     label: "reject / no action"
     action: "do not allocate capital"
