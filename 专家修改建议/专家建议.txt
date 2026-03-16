@@ -1,0 +1,378 @@
+我先给你结论：**能融合，而且我认为能比“鳄鱼式大宗商品逻辑”走得更远；但前提不是把三套方法机械相加，而是把它们重写成一个有先后顺序的系统。** 这个系统不是“见低估就买”，也不是“见周期就冲”，而是：
+
+**先找有地板价（value floor / intrinsic value）的东西，再找变化开始但价格还没反映的时点，最后等边际买家（marginal buyer）出现。**
+
+你附件里的项目，其实已经在往这个方向走了：它从旧鳄鱼模型迁移成了 `market-opportunity-scanner` 和 `single-stock-deep-dive` 两个 skill，也明确废除了“非国资就否决”“PB<=0.8 才能研究”这类旧硬规则。我认为这一步方向是对的，因为这些规则适合做**周期子策略**，不适合做**总框架**。
+
+但你现在这套 agent 还没有真正进入“等风来”阶段。原因很具体：`radar_scan_engine.py` 的 `_load_universe()` 现在是按总市值降序取前 `limit`，`limit=24` 时本质上是在扫“24 个大市值样本”，这和你要的小中盘弹性是反着来的；`valuation_engine.py` 对 cyclical 的 normalized profit 甚至会退化成“最新利润或 equity×0.06”；`universal_gate.py` 的 regime/valuation 仍主要依赖 PB、距高点位置和关键词启发式（heuristic），所以它更像一个通用静态打分器，还不是你要的“价值—周期—反转—资金确认”系统。
+
+我会把你的思路重写成一句更底层的话：
+
+**买股票，不是买代码和K线；而是用股票这个便宜凭证，先占住一块还能活下去、而且被低估的资产/生意，再等“变化”发生，最后等“买家”承认。**
+
+这其实正好把三套哲学串起来了。Berkshire 在 2025 年报里仍把原则写得很清楚：判断标准是能否长期提升每股 intrinsic value，优先投自己真正理解、拥有 durable advantage、管理层高诚信的生意，而且要有 patience 和对高 conviction ideas 的集中配置。再叠加 AQR 关于 size 和 quality 的研究，你的“小市值弹性”想法是对的，但 size 只能是**放大器（amplifier）**，不能替代 quality；控制 junk 以后，size premium 才更稳定，quality-minus-junk 的历史风险收益表现也更强。([Berkshire Hathaway][1])
+
+所以我不建议把“鳄鱼 prompt”升级成总纲。我建议把它**降级成一个 `cyclical adapter`**。也就是说：
+
+* 当标的是资源股、化工、航运、机械、造船、上游中游这种**周期链条**时，调用鳄鱼逻辑：看现货、库存、capex、价差、成本曲线、供给出清。
+* 当标的是银行、公路、港口、园区、地产链资产包、隐含NAV时，调用 **asset-play** 逻辑。
+* 当标的是经营改善、摘帽、重整、资产注入、并购整合时，调用 **turnaround / special situation** 逻辑。
+* 当标的是优秀生意暂时错杀，则调用 **compounder-value** 逻辑。
+
+也就是说，**鳄鱼不该是世界观，而该是插件。**
+
+---
+
+## 我建议的新总框架：四段式
+
+你可以把它理解成买一间“冷清但没坏掉的工厂”：
+
+第一段，先算这间工厂**最差值多少钱**。
+第二段，看行业或公司是不是开始**变暖**。
+第三段，看是不是有人会来买、并购、回购、增持，或者资金开始看见它。
+第四段，等它从“冷库”进入“起风”，再从观察仓切到攻击仓。
+
+我建议你的总系统改成四个层：
+
+### 1) 价值地板层（Value floor）
+
+先回答：**风不来，我亏多少？**
+
+这不是单纯看 PB。
+而是按类型算：
+
+* `compounder`：owner earnings / no-growth value
+* `cyclical`：tangible book、replacement cost、mid-cycle earnings
+* `turnaround`：survival value、修复后 earnings power
+* `asset_play`：stressed NAV、book / SOTP
+* `special_situation`：概率加权 outcome
+
+你现在的 `bear/base/bull` 不够贴你的哲学。
+应该改成：
+
+* `floor_case`
+* `normalized_case`
+* `recognition_case`
+
+因为你真正关心的是：
+
+* **没风时的地板价**
+* **正常经营时的常态值**
+* **风来时市场可能给的识别值（recognition value）**
+
+---
+
+### 2) 周期/时滞层（Cycle / regime）
+
+这是周金涛思路真正该放的位置。
+
+不是所有票都要看库存周期，但所有票都要问一句：
+
+**现在市场是在把“坏”线性外推，还是变化已经先发生了？**
+
+对周期股，你就看：
+
+* 现货/价差/库存
+* 上游利润修复
+* capex 启动
+* 订单向设备/配套传导
+* 股价有没有 still asleep
+
+对非周期股，也有 regime：
+
+* 利率/信用环境
+* 政策偏好
+* 行业出清
+* 竞争格局变化
+* 并购重组窗口
+
+这里要注意一个关键点：**周期不是只属于煤钢化工。**
+银行是信用周期，地产/园区是资产周期，医药器械有政策和渠道周期，半导体有资本开支和库存周期，软件/平台有估值与支出周期。你把“周期”理解成**变化的时钟**，就能从鳄鱼的大宗框架扩展到更广的公司。
+
+---
+
+### 3) 困境反转层（Turnaround / repair）
+
+你最容易赚大钱的地方，往往不在“纯价值”，而在**价值 + 修复**。
+
+但困境反转一定要按困境来源拆开，不然容易买到 junk：
+
+* `cyclical distress`：行业低谷导致利润崩，但资产和位置还在
+* `operational distress`：管理和经营出问题，但可修复
+* `balance-sheet distress`：债务太重，需要重整/展期/注资
+* `governance distress`：财务造假、资金占用、信披问题
+* `one-off distress`：诉讼、事故、计提、短期外部冲击
+
+前 3 类可以研究。
+第 4 类必须极重惩罚，很多时候直接否。
+这点在 A 股尤其重要，因为近两年退市、财务造假、资金占用、违规减持等监管执法明显更严；同时，监管也在鼓励并购重组、产业整合和寻找第二增长曲线，所以**并购、重整、资产注入**会变成更强的价值实现路径，但“烂公司靠讲故事活命”的空间更小了。([中国证券监督管理委员会][2])
+
+---
+
+### 4) 价值实现层（Realization / wind）
+
+这是你现在最缺、也是最值钱的一层。
+
+“等风来”不能写成一句情绪话，它必须变成算法：
+
+**我不是等主力，我是在等边际买家。**
+
+这句话很重要。
+因为“主力资金”这个词太 A 股黑话了，不够 universal。真正 universal 的表达是：
+
+* 谁会成为下一个更大的买家？
+* 这个买家为什么现在而不是以后买？
+* 它买了以后，这个票能不能因为市值/流通盘/筹码结构产生足够弹性？
+
+所以我会把你的第六道 gate 从现在的 `catalyst truth` 升级成：
+
+**`realization truth = catalyst quality + marginal buyer probability + flow stage`**
+
+这层在 A 股和美股要分开写。
+
+A 股这边，我会把“风”从游资想象改成**边际买家模型**。一个历史上较长期的结构事实是，A 股曾长期存在个人和一般法人占比较高、专业机构占比较低的格局；但与此同时，沪市 ETF 市场到 2024 年 6 月末机构持仓占比已经超过 70%，并购重组改革与中长期资金入市也在强化更持续的买方力量。把这些放在一起看，我的结论是：A 股的“风”不能只定义成游资，也要把 ETF、公募、社保、北向、产业资本、并购方这些更稳定的边际买家一起建模。([深证文档][3])
+
+美股这边则完全不要照搬“主力拉升”。SEC 的公开披露结构已经给了更好的代理变量：Form 13F 适用于管理 1 亿美元以上 Section 13(f) 证券的机构经理，而且本质上是季度末持仓披露，所以它适合做 **ownership confirmation**，不适合做短期 timing；更快的信号是 Form 4（内幕人交易两日内申报）和 13D/13G（受益所有权超过 5% 的披露时限已明显收紧，13D 初始申报为五个工作日）。所以美股 adapter 里，“风”应该优先看 insider buying、activist/beneficial owner、buyback、earnings revision，再用 13F 做二次确认。([美国证券交易委员会][4])
+
+---
+
+## 你附件里，具体该怎么改
+
+### 1. `sector_classification.yaml`
+
+现在这个文件还是“一个主类型 + 少量 secondary”的思路。这个不够。
+
+我建议保留 5 个主类型，但新增一组**正交修饰器（modifiers）**：
+
+* `cycle_state`: trough / repair / expansion / peak
+* `repair_state`: none / stabilizing / repairing / confirmed
+* `distress_source`: cyclical / operational / balance_sheet / governance / one_off
+* `realization_path`: repricing / asset_unlock / M&A / buyback / capital_return / institutional_entry
+* `flow_stage`: abandoned / latent / ignition / trend / crowded
+* `elasticity_bucket`: mega / large / mid / small / micro
+
+这样一个票就不再是“只能是 cyclical 或 turnaround 其一”，而可以是：
+
+`cyclical + repair_state=stabilizing + realization_path=capex_repricing + flow_stage=latent`
+
+这才符合真实市场。
+
+---
+
+### 2. `universal_gate.py`
+
+你现在的六道 gate 思路是对的，但内容要改。`management`、`catalyst`、`bottom_pattern` 目前还是比较浅的 text heuristic。
+
+我建议改成这六道：
+
+1. `business_or_asset_truth`
+2. `survival_truth`
+3. `governance_truth`
+4. `regime_cycle_truth`
+5. `valuation_floor_truth`
+6. `realization_truth`
+
+其中第 6 道最关键。
+你现在只是问“有无 catalyst”。
+我建议改成问：
+
+* catalyst 是否具体？
+* 是什么类型的买家会来？
+* 现在 flow_stage 到哪一步了？
+* 这个票弹性够不够？
+
+然后把 A 股的“低位埋伏”和“风已起可加仓”分成状态机：
+
+* `cold_storage`
+* `ready`
+* `attack`
+* `harvest`
+* `reject`
+
+---
+
+### 3. `valuation_engine.py`
+
+这部分必须大改。因为你现在还是一个偏通用的三情景估值器，不是“埋伏式价值 realization engine”。`cyclical` 用 latest profit 或 equity×6% 去近似 normalized profit，这对你的目标太粗了。
+
+我建议估值输出改成：
+
+* `floor_case`
+* `normalized_case`
+* `recognition_case`
+
+并新增 4 个关键摘要指标：
+
+* `floor_protection = floor_value / current_price`
+* `normalized_upside = normalized_value / current_price - 1`
+* `recognition_upside = recognition_value / current_price - 1`
+* `wind_dependency = recognition_value 相比 normalized_value 还多依赖多少`
+
+这会直接告诉你：
+
+* 有没有地板
+* 常态值有没有空间
+* 风来的时候会不会足够肥
+* 这个收益到底是靠基本面修复，还是纯靠市场愿意抬估值
+
+---
+
+### 4. `radar_scan_engine.py`
+
+这是最先该动刀的地方，因为它直接决定你能不能找到对的票。当前 `_load_universe()` 按总市值降序取样，本身就会系统性错过你想要的小中盘弹性；而且它无条件跳过 `ST`，这虽然能挡垃圾，但也会让一部分可研究的 special situation 永远进不了雷达。
+
+我建议你改成三件事：
+
+第一，**分层 universe**，不要按总市值从大到小截断。
+用市值桶 + 流动性 + 行业多样性抽样。
+A 股默认偏向中小盘，但不必只盯极小票。
+
+第二，**ST/*ST 不直接并入主池，也不一刀切永远删除。**
+给它单独的 `distress sandbox`，单独的风险预算。
+主池里仍以正常票为主，sandbox 只容纳明确有重整/摘帽/资产注入路径的名字。
+
+第三，scanner 输出里增加状态字段。
+你当前项目要求 scanner 只输出 `Priority shortlist / Secondary watchlist / Reject`，这个纪律我赞成，不要改。只是在 payload 里加一个隐藏状态：`cold_storage / ready / attack / harvest`，这样就能兼顾现在的报告纪律和你的“等风来”交易逻辑。
+
+---
+
+### 5. `scoring_rules.yaml` 与 `valuation_discipline.yaml`
+
+这两个文件现在已经是“按类型切换估值”，这是好事；但还缺两点：
+
+* **动态权重（dynamic weights）**
+* **状态阈值（state thresholds）**
+
+因为 `compounder`、`cyclical`、`turnaround` 最看重的东西本来就不同。现在静态权重太平均了。
+
+我建议新的八维权重，至少改成下面这种思路：
+
+* `intrinsic_value_floor`：20
+* `survival_boundary`：15
+* `governance_anti_fraud`：10
+* `business_or_asset_quality`：10
+* `regime_cycle_position`：15
+* `turnaround_catalyst`：10
+* `flow_realization_and_elasticity`：15
+* `thesis_clarity`：5
+
+然后再按类型套模板。比如：
+
+* `cyclical`：cycle 权重大，flow 次之
+* `turnaround`：survival 与 repair 权重大
+* `asset_play`：value floor 与 catalyst 权重大
+* `compounder`：business quality 与 valuation 权重大
+
+这会让你的系统更像 underwriting，而不是平均分考试。
+
+---
+
+## 你最想要的“等风来”，应该怎么量化
+
+我建议直接变成一个三段仓位系统：
+
+### `cold_storage`
+
+条件建议：
+
+* `floor_protection >= 0.85`
+* `normalized_upside >= 40%`
+* `flow_stage in {abandoned, latent}`
+
+动作：小仓埋伏，2%–4%。
+
+### `ready`
+
+条件建议：
+
+* `repair_state in {repairing, confirmed}` 或 `cycle_state` 从 trough 转 repair
+* `flow_stage == ignition`
+* `normalized_upside >= 25%`
+
+动作：把它从观察仓升成主观察对象，5%–8%。
+
+### `attack`
+
+条件建议：
+
+* `flow_stage in {trend}`
+* `recognition_upside >= 20%`
+* price/volume/relative strength 开始共振
+* thesis 没有被 price 提前吃完
+
+动作：主攻仓，8%–15%。
+
+### `harvest`
+
+条件建议：
+
+* `flow_stage == crowded`
+* 或价格接近 `recognition_case`
+* 或分歧开始恶化、量价背离、fundamental 跟不上
+
+动作：减仓，不追。
+
+这套状态机比“看到便宜就重仓”“看到启动才追”都更稳，因为它把**理解、埋伏、确认、攻击**分开了。
+
+---
+
+## 小市值该怎么放进系统
+
+你这个直觉我赞成，但要修正成一句更严谨的话：
+
+**小市值不是买入理由，而是赔率放大器。**
+
+也就是说：
+
+* 先过 survival / governance / value floor
+* 再把小市值作为弹性加分
+* 绝不能因为“小”而容忍垃圾
+
+这点其实和 AQR 的 size + quality 研究是一致的：size 单独看不可靠，但控制 junk 之后，size 才更有用。([AQR Capital Management][5])
+
+所以我建议 A 股里给不同类型一个“偏好市值区间”，但只做**soft preference**，不要再回到“XX 亿以上一票否决”的老路：
+
+* `cyclical / turnaround`：偏好中小盘
+* `asset_play`：可以稍大，但要看资产重估和买家路径
+* `compounder`：可以更大，但不适合用“埋伏等风来”的打法重仓
+
+---
+
+## 能不能拿到更广泛公司、同时争取更好的盈利？
+
+我的答案是：**能，前提是你把“鳄鱼逻辑”从总纲改成子模块。**
+
+因为鳄鱼原型最强的是一件事：
+它非常擅长抓**商品/资源/铲子股里的宏观错杀与传导时滞**。
+
+但它不擅长：
+
+* 资产重估
+* 重整/摘帽/资产注入
+* 回购/分红/资本配置改善
+* 高质量生意的暂时错杀
+* 美股里靠 insider / activist / buyback 驱动的 realization
+
+所以更好的做法不是“扩大鳄鱼能力圈”，而是：
+
+**让鳄鱼负责 cyclical 这一个高胜率子宇宙；
+顶层 OS 负责 value floor、repair、realization、flow。**
+
+这样你能覆盖的公司会明显更广，而且不是靠放松纪律来扩展，而是靠**分层和分型**来扩展。
+
+---
+
+我把这套蓝图和一个原型文件写出来了，方便你直接对照改代码：
+
+[重构蓝图 vcrf_refactor_blueprint.md](sandbox:/mnt/data/vcrf_refactor_blueprint.md)
+[等风来原型 flow_realization_engine.py](sandbox:/mnt/data/flow_realization_engine.py)
+[评分规则原型 scoring_rules_vcrf.yaml](sandbox:/mnt/data/scoring_rules_vcrf.yaml)
+[估值纪律原型 valuation_discipline_vcrf.yaml](sandbox:/mnt/data/valuation_discipline_vcrf.yaml)
+
+这几个文件是可落地的 skeleton，但还没有和你现有 adapters 的字段名逐一对齐。**最值得先改的两个文件，是 `universal_gate.py` 和 `radar_scan_engine.py`**，因为这两处一改，你的系统就能第一次真正区分“低位有价值但风未到”和“风已起可以加仓”。
+
+[1]: https://berkshirehathaway.com/2025ar/2025ar.pdf "https://berkshirehathaway.com/2025ar/2025ar.pdf"
+[2]: https://www.csrc.gov.cn/csrc/c100028/c7508366/content.shtml "https://www.csrc.gov.cn/csrc/c100028/c7508366/content.shtml"
+[3]: https://docs.static.szse.cn/www/aboutus/research/secuities/daily/W020200417335981839230.pdf "https://docs.static.szse.cn/www/aboutus/research/secuities/daily/W020200417335981839230.pdf"
+[4]: https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f "https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f"
+[5]: https://www.aqr.com/Insights/Research/Working-Paper/Size-Matters-If-You-Control-Your-Junk?utm_source=chatgpt.com "Size Matters, If You Control Your Junk"
