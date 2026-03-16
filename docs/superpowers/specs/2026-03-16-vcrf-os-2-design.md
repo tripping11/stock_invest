@@ -69,6 +69,15 @@ Design rules:
 - `special_tags` do not bypass scoring, but they can alter hard-veto logic and route assignment.
 - `ST` and `*ST` names are not hard-filtered out of the universe; they are tagged and routed.
 
+Driver Stack fill order is mandatory:
+
+1. resolve `sector_route` from `sector_classification.yaml`
+2. compute route-only preliminary modifiers that do not depend on `primary_type`, especially `cycle_state`
+3. determine `primary_type` from `sector_route + preliminary_cycle_state + financials + tags + events`
+4. fill the remaining modifiers and special tags
+
+This avoids a circular dependency where `primary_type` would otherwise depend on a modifier that itself depends on `primary_type`.
+
 ### 2. Dual-Axis Output
 
 The core scoring contract is:
@@ -183,15 +192,102 @@ _meta:
   tolerance: 0.001
 
 base_templates:
+  compounder:
+    underwrite:
+      intrinsic_value_floor: 0.18
+      survival_boundary: 0.22
+      governance_anti_fraud: 0.18
+      business_or_asset_quality: 0.20
+      normalized_earnings_power: 0.22
+    realization:
+      repair_state: 0.10
+      regime_cycle_position: 0.10
+      marginal_buyer_probability: 0.15
+      flow_confirmation: 0.15
+      elasticity: 0.10
+      catalyst_quality: 0.40
   cyclical:
-    underwrite: ...
-    realization: ...
+    underwrite:
+      intrinsic_value_floor: 0.20
+      survival_boundary: 0.25
+      governance_anti_fraud: 0.10
+      business_or_asset_quality: 0.20
+      normalized_earnings_power: 0.25
+    realization:
+      repair_state: 0.20
+      regime_cycle_position: 0.30
+      marginal_buyer_probability: 0.05
+      flow_confirmation: 0.15
+      elasticity: 0.20
+      catalyst_quality: 0.10
+  turnaround:
+    underwrite:
+      intrinsic_value_floor: 0.18
+      survival_boundary: 0.34
+      governance_anti_fraud: 0.18
+      business_or_asset_quality: 0.10
+      normalized_earnings_power: 0.20
+    realization:
+      repair_state: 0.30
+      regime_cycle_position: 0.10
+      marginal_buyer_probability: 0.10
+      flow_confirmation: 0.15
+      elasticity: 0.10
+      catalyst_quality: 0.25
+  asset_play:
+    underwrite:
+      intrinsic_value_floor: 0.30
+      survival_boundary: 0.18
+      governance_anti_fraud: 0.18
+      business_or_asset_quality: 0.14
+      normalized_earnings_power: 0.20
+    realization:
+      repair_state: 0.10
+      regime_cycle_position: 0.10
+      marginal_buyer_probability: 0.15
+      flow_confirmation: 0.10
+      elasticity: 0.15
+      catalyst_quality: 0.40
+  special_situation:
+    underwrite:
+      intrinsic_value_floor: 0.24
+      survival_boundary: 0.22
+      governance_anti_fraud: 0.22
+      business_or_asset_quality: 0.12
+      normalized_earnings_power: 0.20
+    realization:
+      repair_state: 0.12
+      regime_cycle_position: 0.08
+      marginal_buyer_probability: 0.20
+      flow_confirmation: 0.10
+      elasticity: 0.10
+      catalyst_quality: 0.40
 
 sector_overrides:
   core_resource:
-    underwrite: ...
+    underwrite:
+      normalized_earnings_power: -0.05
+      intrinsic_value_floor: +0.05
   rigid_shovel:
-    realization: ...
+    realization:
+      catalyst_quality: +0.05
+      elasticity: -0.05
+  core_military:
+    underwrite:
+      business_or_asset_quality: +0.05
+      normalized_earnings_power: -0.05
+  financial_asset:
+    underwrite:
+      intrinsic_value_floor: +0.05
+      business_or_asset_quality: -0.05
+  consumer:
+    realization:
+      catalyst_quality: +0.05
+      elasticity: -0.05
+  tech:
+    realization:
+      marginal_buyer_probability: +0.05
+      catalyst_quality: -0.05
 ```
 
 Rules:
@@ -200,6 +296,7 @@ Rules:
 - `sector_overrides` apply signed deltas after base weights are loaded.
 - After overlay application, each axis must still sum to `1.0 +/- tolerance`.
 - Loader behavior on failed normalization: raise an exception. Do not silently renormalize.
+- The five `base_templates` above are initial calibration values and must be treated as explicit defaults, not placeholders.
 
 ### 3. `vcrf_state_machine.yaml`
 
@@ -390,6 +487,24 @@ Output states:
 - `repairing`
 - `confirmed`
 
+State-to-score mapping:
+
+```python
+REPAIR_STATE_SCORE = {
+    "none": 20,
+    "stabilizing": 45,
+    "repairing": 70,
+    "confirmed": 90,
+}
+
+score = REPAIR_STATE_SCORE[repair_state]
+if detect_big_bath_verdict == "big_bath":
+    score += 5
+if ocf_turn_positive and gross_margin_recovering:
+    score += 5
+score = clamp(score, 0, 100)
+```
+
 ### 2. `regime_cycle_position`
 
 Inputs:
@@ -399,6 +514,23 @@ Inputs:
 - price drawdown and base-building pattern
 
 `core_resource` and `rigid_shovel` depend heavily on cycle context; `consumer` and `tech` depend more on repair and demand normalization.
+
+Scoring structure:
+
+```python
+score = weighted_sum(
+    route_cycle_score,        # commodity / capex / policy / order-cycle context
+    price_position_score,     # deep drawdown, base-building, rebound profile
+    inventory_or_demand_score # route-specific demand tightening / destocking / recovery
+)
+```
+
+Example mapping:
+
+- `trough`: `70-85`
+- `repair`: `55-75`
+- `expansion`: `40-65`
+- `peak`: `10-35`
 
 ### 3. `marginal_buyer_probability`
 
@@ -412,6 +544,26 @@ A-share first implementation:
 - CNINFO event flags
 
 U.S. implementation remains interface-compatible but can degrade to partial data.
+
+Scoring structure:
+
+```python
+score = weighted_sum(
+    shareholder_trend_score,
+    ownership_concentration_score,
+    institutional_flow_proxy_score,
+    event_buyer_signal_score,
+)
+```
+
+For A-shares:
+
+- shareholder count falling consistently: positive
+- concentration improving: positive
+- northbound / institutional accumulation proxy: positive
+- insider reduction or risk-disposal events: negative
+
+Map final score into `0-100`.
 
 ### 4. `flow_confirmation`
 
@@ -429,9 +581,54 @@ Level 2:
 
 Missing Level 2 does not block the axis. It degrades confidence and may reduce the score.
 
+Scoring structure:
+
+```python
+level1_score = weighted_sum(
+    volume_ratio_score,      # 0.40
+    drawdown_rebound_score,  # 0.35
+    turnover_expansion_score # 0.25
+)
+
+level2_bonus = weighted_sum(
+    buyback_or_cancellation_score,
+    shareholder_increase_score,
+    asset_injection_or_approval_score,
+)
+
+score = level1_score + level2_bonus
+score = clamp(score, 0, 100)
+```
+
+Suggested Level 1 mappings:
+
+- `volume_ratio_20_vs_120 < 0.8`: `15`
+- `0.8-1.1`: `35`
+- `1.1-1.5`: `60`
+- `1.5-2.0`: `80`
+- `>2.0`: `90`
+
 ### 5. `elasticity`
 
 Use free-float size, turnover, and crowding sensitivity. Small size is a multiplier, not a hard gate.
+
+Scoring structure:
+
+```python
+size_score = banded_free_float_cap_score(...)
+turnover_score = banded_turnover_score(...)
+crowding_penalty = banded_crowding_penalty(...)
+
+score = clamp(0.60 * size_score + 0.25 * turnover_score - 0.15 * crowding_penalty, 0, 100)
+```
+
+Suggested free-float-cap mapping for A-shares:
+
+- `micro`: `95`
+- `small`: `80`
+- `mid`: `60`
+- `large`: `35`
+- `mega`: `20`
 
 ### 6. `catalyst_quality`
 
@@ -444,22 +641,52 @@ Explicitly scored by realization path:
 - `capital_return`
 - `institutional_entry`
 
+Scoring structure:
+
+```python
+score = max_path_score(realization_paths_detected)
+if catalyst_is_signed_or_approved:
+    score += 10
+if catalyst_is_only_keyword_level:
+    score -= 10
+score = clamp(score, 0, 100)
+```
+
+Default path-quality anchors:
+
+- `asset_unlock`, `mna`: `75-90`
+- `buyback`, `capital_return`: `60-80`
+- `policy`: `50-75`
+- `institutional_entry`: `45-70`
+
 ## Primary Type Detection
 
 `primary_type` is dynamic, not a static label lookup.
 
 ```python
-def determine_primary_type(sector_route, financials_3y, tags, events) -> tuple[str, float]:
+def determine_primary_type(
+    sector_route,
+    preliminary_cycle_state,
+    financials_3y,
+    tags,
+    events,
+    big_bath_result,
+) -> tuple[str, float]:
     if "st" in tags or "star_st" in tags:
         return "special_situation", 0.90
-    if losses_2y and big_bath_or_repair_evidence:
+    if losses_2y and (
+        big_bath_result["verdict"] == "big_bath"
+        or repair_evidence_from_financial_trend
+    ):
         return "turnaround", 0.80
-    if sector_route in {"core_resource", "rigid_shovel"} and cycle_state in {"trough", "repair"}:
+    if sector_route in {"core_resource", "rigid_shovel"} and preliminary_cycle_state in {"trough", "repair"}:
         return "cyclical", 0.75
     if deep_discount_to_nav and asset_unlock_path:
         return "asset_play", 0.75
     return "compounder", 0.60
 ```
+
+If `big_bath_result["verdict"] == "inconclusive"`, the turnaround branch may still trigger via repair evidence from margins, OCF, and one-off-loss proxies. `detect_big_bath()` is informative, not a single point of failure.
 
 Priority ordering is deliberate:
 
@@ -566,6 +793,11 @@ New logic should live in focused modules and only be re-exported where compatibi
 | radar payload | score-heavy ranking | state-aware ranking | add new fields without removing old shortlist keys |
 | `scorecard.verdict` | old textual verdict | kept temporarily | preserve one version while `position_state` becomes the canonical action field |
 
+Legacy alias exit condition:
+
+- remove compatibility aliases after the first successful full-market radar scan under the new pipeline produces state-consistent output for more than `90%` of names and all active report consumers have been updated to read the new canonical fields
+- until that point, legacy fields remain read-only compatibility shims and must not become the source of truth
+
 ## `detect_big_bath()` Spike Plan
 
 ### Goal
@@ -608,6 +840,33 @@ Before implementation planning:
 - confirm weight overlays preserve exact axis normalization
 - confirm `NEW` state handling avoids illegal first-run transitions
 - confirm `HARVEST_CANDIDATE` parameters are owned by config, not hard-coded
+
+## Test Contract
+
+The implementation plan must include at least these five test groups:
+
+1. `WeightNormalizationTests`
+   - load every `base_template` combined with every applicable `sector_override`
+   - assert underwrite and realization sums are `1.0 +/- tolerance`
+   - assert invalid overlays raise immediately
+
+2. `StateTransitionMatrixTests`
+   - feed `(prev_state, underwrite_score, realization_score, valuation_summary)` combinations
+   - assert legal transitions pass and forbidden transitions are downgraded to the nearest legal state
+
+3. `DegradationBehaviorTests`
+   - simulate missing `survival_boundary`
+   - assert max state is capped at `COLD_STORAGE`
+   - simulate missing Level-2 `flow_confirmation`
+   - assert state remains legal but confidence degrades
+
+4. `PrimaryTypeRoutingTests`
+   - use representative route-aware fixtures
+   - assert `sector_route + preliminary_cycle_state + financials + tags` maps to the expected `primary_type`
+
+5. `VCRFEndToEndSmokeTests`
+   - run one real or high-fidelity synthetic name through `Driver Stack -> dual-axis -> valuation -> state machine`
+   - assert output shape matches the published contracts
 
 ## Decision
 
