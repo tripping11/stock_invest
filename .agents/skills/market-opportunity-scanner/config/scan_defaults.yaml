@@ -1,0 +1,10 @@
+defaults:
+  market: "A-share"
+  max_universe_size: 24
+  priority_score_cutoff: 75
+  secondary_score_cutoff: 65
+  radar_day_cache_enabled: true
+  radar_max_workers: 4
+  radar_retry_delays:
+    - 0.5
+    - 1.0

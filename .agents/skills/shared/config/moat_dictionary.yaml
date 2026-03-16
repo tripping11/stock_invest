@@ -1,0 +1,66 @@
+categories:
+  brand:
+    label: "Brand / customer trust"
+    keywords:
+      - 品牌
+      - 高端品牌
+      - 渠道力
+      - 心智
+      - 复购
+  switching_costs:
+    label: "Switching costs"
+    keywords:
+      - 客户粘性
+      - 切换成本
+      - 认证周期
+      - 绑定
+      - 长协
+  network_effects:
+    label: "Network effects"
+    keywords:
+      - 网络效应
+      - 平台
+      - 双边市场
+      - 生态
+      - 用户规模
+  scale_economies:
+    label: "Scale economies"
+    keywords:
+      - 规模效应
+      - 成本优势
+      - 产能优势
+      - 低成本
+      - 龙头
+  cost_advantage:
+    label: "Cost advantage"
+    keywords:
+      - 成本曲线
+      - 一体化
+      - 自有资源
+      - 矿权
+      - 低成本产区
+  regulation_licenses:
+    label: "Regulation / licenses"
+    keywords:
+      - 特许经营
+      - 牌照
+      - 准入门槛
+      - 民爆许可
+      - 军工资质
+      - 稀缺资质
+  intangible_assets:
+    label: "Intangibles / IP"
+    keywords:
+      - 专利
+      - 核心技术
+      - 配方
+      - know-how
+      - 研发壁垒
+  distribution:
+    label: "Distribution / service network"
+    keywords:
+      - 渠道网络
+      - 服务网络
+      - 全国布局
+      - 客户覆盖
+      - 售后体系

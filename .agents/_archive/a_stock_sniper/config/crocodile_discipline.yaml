@@ -1,0 +1,98 @@
+defaults:
+  bottom:
+    pass:
+      max_current_vs_high: 55
+      max_pb: 0.85
+      max_pb_percentile: 20
+    caution:
+      max_current_vs_high: 65
+      max_pb: 1.00
+      max_pb_percentile: 35
+    reject:
+      min_pb: 1.00
+      min_pb_percentile: 50
+      min_current_vs_high: 70
+  price_trigger:
+    min_points: 20
+    rebound_from_60d_low_pct: 0.08
+    above_avg20_pct: 0.02
+    return_20d_pct: 0.05
+    caution_rebound_from_60d_low_pct: 0.03
+    caution_above_avg20_pct: 0.00
+    caution_return_20d_pct: 0.00
+  valuation:
+    sell_pe: 15
+    optimistic_pe: 20
+    bubble_pe: 30
+    foam_alert_pb: 3.0
+    foam_alert_pe: 30
+    long_high_haircut: 0.90
+    medium_high_haircut: 0.85
+    short_high_haircut: 0.80
+    latest_floor_multiplier: 1.03
+  radar:
+    red:
+      max_pb: 0.80
+      max_current_vs_high: 60
+      max_market_cap_yi: 300
+    yellow:
+      max_pb: 1.20
+      max_current_vs_high: 70
+  cost_stress_pct: 0.15
+
+modes:
+  resource_body:
+    price_trigger:
+      rebound_from_60d_low_pct: 0.10
+      above_avg20_pct: 0.02
+      return_20d_pct: 0.05
+      caution_rebound_from_60d_low_pct: 0.03
+      caution_above_avg20_pct: 0.00
+      caution_return_20d_pct: 0.00
+    valuation:
+      sell_pe: 15
+      optimistic_pe: 20
+      bubble_pe: 30
+      foam_alert_pb: 3.0
+      foam_alert_pe: 30
+      long_high_haircut: 0.90
+      medium_high_haircut: 0.85
+      short_high_haircut: 0.80
+      latest_floor_multiplier: 1.03
+    cost_stress_pct: 0.18
+
+  shovel_play:
+    price_trigger:
+      rebound_from_60d_low_pct: 0.06
+      above_avg20_pct: 0.01
+      return_20d_pct: 0.03
+      caution_rebound_from_60d_low_pct: 0.02
+      caution_above_avg20_pct: -0.01
+      caution_return_20d_pct: -0.02
+    valuation:
+      sell_pe: 15
+      optimistic_pe: 20
+      bubble_pe: 30
+      foam_alert_pb: 3.0
+      foam_alert_pe: 30
+      long_high_haircut: 0.92
+      medium_high_haircut: 0.88
+      short_high_haircut: 0.82
+      latest_floor_multiplier: 1.02
+    cost_stress_pct: 0.12
+
+  military:
+    valuation:
+      entry_ps_pass: 2.5
+      entry_ps_caution: 4.0
+      sell_ps: 6.0
+      optimistic_ps: 8.0
+      bubble_ps: 10.0
+      foam_alert_pb: 3.0
+      foam_alert_pe: 30
+      foam_alert_ps: 12.0
+      long_high_haircut: 0.95
+      medium_high_haircut: 0.90
+      short_high_haircut: 0.85
+      latest_floor_multiplier: 1.02
+    cost_stress_pct: 0.10

@@ -1,0 +1,174 @@
+# 数据源分级注册表（Source Registry）
+# Tier 0 = 监管/官方原文（最终真相层）
+# Tier 1 = 聚合抓取层（便捷通道）
+# Tier 2 = 辅助验证层（交叉验证）
+
+fields:
+  # ========== 公司基本面 ==========
+  actual_controller:
+    description: "实际控制人 / 国资属性"
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: cninfo_annual_report
+        description: "巨潮资讯 - 年报控制关系表"
+        url_pattern: "http://www.cninfo.com.cn/new/disclosure/detail?..."
+      - tier: 1
+        name: akshare_stock_profile
+        description: "akshare stock_individual_info_em"
+        fallback: true
+    confidence_rule: "Tier 0 = high; Tier 1 only = medium"
+
+  revenue_breakdown:
+    description: "主营业务构成 / 纯度"
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: cninfo_annual_report_segment
+        description: "年报分部报告 / 主营业务分产品"
+      - tier: 1
+        name: akshare_revenue_breakdown
+        description: "akshare 东方财富主营构成"
+        fallback: true
+    confidence_rule: "Tier 0 = high; Tier 1 only = medium"
+
+  net_profit:
+    description: "归母净利润"
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: cninfo_financial_report
+        description: "巨潮 - 定期报告利润表"
+      - tier: 1
+        name: akshare_financial
+        description: "akshare stock_financial_abstract_ths"
+        fallback: true
+
+  total_equity:
+    description: "归母净资产"
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: cninfo_balance_sheet
+        description: "巨潮 - 定期报告资产负债表"
+      - tier: 1
+        name: akshare_financial
+        fallback: true
+
+  # ========== 估值 ==========
+  pb_ratio:
+    description: "市净率PB"
+    required_tier: 1
+    sources:
+      - tier: 1
+        name: akshare_valuation
+        description: "akshare stock_a_indicator_lg"
+      - tier: 1
+        name: eastmoney_valuation
+        description: "东方财富估值页"
+        fallback: true
+
+  pb_percentile:
+    description: "PB历史分位"
+    required_tier: 1
+    sources:
+      - tier: 1
+        name: calculated
+        description: "基于akshare历史PB序列自行计算"
+
+  # ========== 行情 ==========
+  stock_price:
+    description: "当前股价 / K线"
+    required_tier: 1
+    sources:
+      - tier: 1
+        name: akshare_kline
+        description: "akshare stock_zh_a_hist"
+
+  market_cap:
+    description: "总市值"
+    required_tier: 1
+    sources:
+      - tier: 1
+        name: akshare_realtime
+        description: "akshare stock_zh_a_spot_em"
+
+  # ========== 四维信号-资源本体 ==========
+  spot_price:
+    description: "现货/期货价格"
+    required_tier: 2
+    sources:
+      - tier: 2
+        name: 100ppi_commodity
+        description: "生意社 - 大宗商品现货价"
+      - tier: 1
+        name: akshare_commodity
+        description: "akshare spot_goods"
+        fallback: true
+
+  industry_inventory:
+    description: "行业库存"
+    required_tier: 2
+    sources:
+      - tier: 2
+        name: 100ppi_inventory
+        description: "生意社 - 周度库存"
+      - tier: 2
+        name: industry_association
+        description: "行业协会数据"
+        fallback: true
+
+  capex_investment:
+    description: "行业固定资产投资增速"
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: stats_gov_fixed_asset
+        description: "国家统计局 - 分行业固定资产投资"
+        url_pattern: "https://data.stats.gov.cn/..."
+      - tier: 1
+        name: akshare_macro
+        description: "akshare macro_china_fixed_asset"
+        fallback: true
+
+  # ========== 矿权/产能 ==========
+  mineral_rights:
+    description: "矿权/产能/项目进度"
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: cninfo_announcement
+        description: "巨潮 - 临时公告/定期报告资源部分"
+      - tier: 0
+        name: env_assessment
+        description: "生态环境部/地方环评公示"
+
+  license_moat:
+    description: "行政牌照/军工资质/民爆许可"
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: cninfo_license_section
+        description: "定期报告/公告中的牌照与资质章节"
+
+  cost_structure:
+    description: "成本曲线/刚性成本"
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: cninfo_annual_cost
+        description: "年报成本分析/MD&A章节"
+
+# 全局规则
+global_rules:
+  freshness_days: 180
+  fallback_enabled: true
+  min_confidence_for_conclusion: medium
+  tier0_required_fields:
+    - actual_controller
+    - revenue_breakdown
+    - net_profit
+    - total_equity
+    - mineral_rights
+    - cost_structure
+    - capex_investment

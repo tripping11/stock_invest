@@ -1,0 +1,59 @@
+opportunity_types:
+  compounder:
+    methods:
+      floor_case: owner_earnings_no_growth
+      normalized_case: owner_earnings_fair_multiple
+      recognition_case: premium_quality_multiple
+    multiples:
+      floor: 12
+      normalized: 18
+      recognition: 24
+  cyclical:
+    methods:
+      floor_case: tangible_book_or_replacement_cost
+      normalized_case: mid_cycle_earnings
+      recognition_case: rerated_mid_cycle_earnings
+    multiples:
+      floor: 0.85
+      normalized: 9
+      recognition: 12
+  turnaround:
+    methods:
+      floor_case: survival_value
+      normalized_case: repaired_earnings
+      recognition_case: post_repair_rerating
+    multiples:
+      floor_book: 0.7
+      normalized_pe: 10
+      recognition_pe: 14
+  asset_play:
+    methods:
+      floor_case: stressed_nav
+      normalized_case: book_or_nav
+      recognition_case: discount_close
+    multiples:
+      floor: 0.8
+      normalized: 1.0
+      recognition: 1.2
+  special_situation:
+    methods:
+      floor_case: downside_case_weighted
+      normalized_case: base_case_weighted
+      recognition_case: upside_case_weighted
+    probabilities:
+      downside: 0.4
+      base: 0.6
+      upside: 0.8
+
+compatibility_defaults:
+  position_state_thresholds:
+    min_floor_protection_for_seed: 0.85
+    min_normalized_upside_for_seed: 0.40
+    min_normalized_upside_for_attack: 0.25
+    min_recognition_upside_for_attack: 0.20
+  flow_stage_order:
+    abandoned: 0
+    latent: 1
+    ignition: 2
+    trend: 3
+    crowded: 4

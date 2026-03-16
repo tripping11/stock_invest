@@ -1,0 +1,48 @@
+groups:
+  - name: 中国核工业集团
+    aliases: ["中国核工业集团", "中核集团"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["中国核建", "中核科技", "中国同辐"]
+  - name: 中国航天科技集团
+    aliases: ["中国航天科技集团", "航天科技集团"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["中国卫星", "航天电子", "航天动力"]
+  - name: 中国航天科工集团
+    aliases: ["中国航天科工集团", "航天科工集团", "航天科工"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["航天信息", "航天发展", "航天晨光"]
+  - name: 中国航空工业集团
+    aliases: ["中国航空工业集团", "中航工业", "航空工业集团"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["中航沈飞", "中航高科", "中航重机", "中直股份"]
+  - name: 中国航空发动机集团
+    aliases: ["中国航空发动机集团", "中国航发", "航发集团"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["航发动力", "航发控制", "航发科技"]
+  - name: 中国船舶集团
+    aliases: ["中国船舶集团", "中船集团", "中国船舶工业集团"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["中国船舶", "中国重工", "中船防务"]
+  - name: 中国兵器工业集团
+    aliases: ["中国兵器工业集团", "兵器工业集团", "中国兵器"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["北方股份", "光电股份", "北化股份"]
+  - name: 中国兵器装备集团
+    aliases: ["中国兵器装备集团", "兵器装备集团"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["长安汽车", "建设工业", "湖南天雁"]
+  - name: 中国电子科技集团
+    aliases: ["中国电子科技集团", "中国电科", "电科集团"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["国睿科技", "四创电子", "太极股份"]
+  - name: 中国电子信息产业集团
+    aliases: ["中国电子信息产业集团", "中国电子", "CEC"]
+    securitization_status: "registry_tracked"
+    listed_platforms: ["深桑达A", "中国长城", "振华科技"]
+
+company_overrides:
+  "600893": "中国航空发动机集团"
+  "600760": "中国航空工业集团"
+  "600765": "中国航空工业集团"
+  "600862": "中国航空工业集团"
+  "600879": "中国航天科技集团"

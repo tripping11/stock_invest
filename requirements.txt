@@ -1,0 +1,8 @@
+akshare
+baostock
+cn-stats
+pandas
+PyYAML
+pypdf
+pywencai
+requests

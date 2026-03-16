@@ -1,0 +1,74 @@
+opportunity_types:
+  compounder:
+    label: "Compounder"
+    methods:
+      - owner_earnings_pe
+      - dcf_sanity_check
+    multiples:
+      bear: 12
+      base: 18
+      bull: 24
+    growth_assumptions:
+      bear: "flat earnings, no rerating"
+      base: "mid-single-digit growth with stable returns"
+      bull: "double-digit growth with premium durability"
+  cyclical:
+    label: "Cyclical"
+    methods:
+      - normalized_earnings
+      - mid_cycle_pe
+    multiples:
+      bear: 6
+      base: 9
+      bull: 12
+    normalized_haircuts:
+      bear: 0.75
+      base: 1.00
+      bull: 1.20
+  turnaround:
+    label: "Turnaround"
+    methods:
+      - survival_value
+      - recovery_value
+      - normalized_value
+    balance_sheet_haircuts:
+      bear: 0.55
+      base: 0.80
+      bull: 1.00
+    recovery_multiples:
+      bear: 8
+      base: 12
+      bull: 16
+  asset_play:
+    label: "Asset play"
+    methods:
+      - book_value
+      - nav_sanity_check
+      - replacement_cost
+    book_multiples:
+      bear: 0.70
+      base: 1.00
+      bull: 1.25
+  special_situation:
+    label: "Special situation"
+    methods:
+      - scenario_weighted_outcome
+    outcome_multiples:
+      bear: 0.85
+      base: 1.10
+      bull: 1.35
+    probabilities:
+      bear: 0.35
+      base: 0.60
+      bull: 0.80
+
+compatibility_defaults:
+  bottom_signal:
+    deep_value_pb: 0.9
+    fair_value_pb: 1.4
+    low_position_vs_high: 55
+    caution_vs_high: 70
+  price_trigger:
+    rebound_from_60d_low_pct: 0.08
+    above_avg20_pct: 0.02
+    return_20d_pct: 0.05

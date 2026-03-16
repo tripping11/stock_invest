@@ -1,0 +1,47 @@
+# 鳄鱼原教旨左侧打分规则（100分制 — 5维绝对左侧体系）
+# 废除一切追涨杀跌，只看左侧极寒折价与生存确定性
+
+dimensions:
+  survival_certainty:
+    label: "1. 生存确定性"
+    weight: 25
+    description: "国资保命，且具备核心军工/行政特许牌照/垄断矿权等护城河"
+
+  cold_valuation_mismatch:
+    label: "2. 四维错配与破净"
+    weight: 25
+    description: "资源/铲子深幅破净(PB≤0.8满分)/军工PS极低，且现货宏观已反转但股价未动"
+
+  macro_profit_elasticity:
+    label: "3. 宏观利润弹性巨大"
+    weight: 25
+    description: "产能弹性大/成本固化，现货微涨或Capex暴增带来峰值利润潜力巨大"
+
+  extreme_simplicity:
+    label: "4. 极简纯粹"
+    weight: 15
+    description: "核心业务>70%，无多元化跨界恶习，盈利公式极简"
+
+  bottom_consolidation:
+    label: "5. 底部长牛皮市"
+    weight: 10
+    description: "盘整≥2年，散户彻底绝望出清，无人问津"
+
+verdict:
+  - range: "85-100"
+    label: "🔴 绝佳出击 (启动深度狙击)"
+    action: "满足极高赔率，准备建仓"
+  - range: "0-84"
+    label: "🟢 赔率不足 (抛弃不看)"
+    action: "纪律否决，空仓等待"
+
+tier0_gate:
+  tier0_unverified_cap: 84
+  tier0_unverified_threshold: 3
+  description: "当 Tier 0 未核验字段 ≥ threshold 时，总分物理封顶 84"
+
+discipline:
+  score_caps:
+    hard_cap:
+      trigger: "PB > 1.0 (资源/铲子)"
+      cap: 84

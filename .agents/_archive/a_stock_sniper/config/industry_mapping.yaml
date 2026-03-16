@@ -1,0 +1,415 @@
+# 行业生态位映射（Industry Mapping）
+# 用于自动判断标的属于哪个同心圆，以及四维信号该用哪套口径
+
+eco_circles:
+  core_resource:
+    label: "核心资源（A类本体）"
+    description: "煤/钢/有色/化工等高弹性大宗，直接囤积底层生产资料"
+    industries:
+      - 煤炭
+      - 煤炭开采
+      - 煤炭行业
+      - 煤化工
+      - 焦煤焦炭
+      - 钢铁
+      - 铁矿石
+      - 铜铝锌
+      - 稀土
+      - 锂
+      - 纯碱
+      - 氯碱
+      - 钛白粉
+      - 磷化工
+      - 氟化工
+      - 石油天然气
+      - 黄金
+      - 化学原料
+      - 化工原料
+      - 基础化工
+      - 小金属
+      - 能源金属
+      - 贵金属
+      - 有色金属
+      - 采掘
+    four_signal_mode: resource_body
+    four_signals:
+      core:
+        - spot_futures_price
+        - industry_inventory
+      auxiliary:
+        - cost_curve_supply
+        - pb_valuation
+
+  rigid_shovel:
+    label: "刚性配套（C类铲子）"
+    description: "民爆/工程机械/港口/造船等垄断铲子，吃别人的Capex"
+    industries:
+      - 民爆
+      - 工程机械
+      - 港口
+      - 造船
+      - 矿山设备
+      - 油服
+      - 核电设备
+      - 特种钢
+      - 船舶制造
+      - 航运港口
+      - 专用设备
+    four_signal_mode: shovel_play
+    four_signals:
+      core:
+        - downstream_spot
+        - downstream_capex
+      auxiliary:
+        - orders_backlog
+        - pb_valuation
+    mandatory_evidence:
+      - downstream_capex
+
+  core_military:
+    label: "核心军工"
+    description: "军工核心供应商，需满足特殊准入门槛"
+    industries:
+      - 航空发动机
+      - 军工电子
+      - 导弹武器
+      - 核工业
+      - 军用特材
+      - 航天航空
+      - 国防军工
+    four_signal_mode: military
+    four_signals:
+      core:
+        - defense_budget
+        - order_visibility
+      auxiliary:
+        - capacity_utilization
+        - pb_valuation
+
+# 越界红牌
+out_of_bounds:
+  label: "越界标的"
+  action: "RED_CARD"
+  examples:
+    - 消费
+    - 医药
+    - 互联网
+    - 金融
+    - 房地产
+    - 传媒
+    - 教育
+    - 食品饮料
+    - 酿酒
+    - 软件
+    - 计算机
+    - 电子
+    - 通信
+    - 保险
+    - 银行
+    - 证券
+
+# ════════════════════════════════════════════════════════════
+# 公司级覆盖：三大同心圆核心标的预映射
+# 覆盖原则：仅收录国资控股（央企/省国资）+ 主营纯粹的核心标的
+# ════════════════════════════════════════════════════════════
+company_overrides:
+  # ── 核心资源：煤炭 ──────────────────────────────────────
+  "601088":
+    name: "中国神华"
+    eco_circle: core_resource
+    sub_industry: 动力煤
+    four_signal_mode: resource_body
+    commodity: 动力煤
+  "601898":
+    name: "中煤能源"
+    eco_circle: core_resource
+    sub_industry: 动力煤
+    four_signal_mode: resource_body
+    commodity: 动力煤
+  "600188":
+    name: "兖矿能源"
+    eco_circle: core_resource
+    sub_industry: 动力煤
+    four_signal_mode: resource_body
+    commodity: 动力煤
+  "601666":
+    name: "平煤股份"
+    eco_circle: core_resource
+    sub_industry: 焦煤
+    four_signal_mode: resource_body
+    commodity: 焦煤
+  "600395":
+    name: "盘江股份"
+    eco_circle: core_resource
+    sub_industry: 焦煤
+    four_signal_mode: resource_body
+    commodity: 焦煤
+  "601001":
+    name: "晋控煤业"
+    eco_circle: core_resource
+    sub_industry: 动力煤
+    four_signal_mode: resource_body
+    commodity: 动力煤
+  "600348":
+    name: "华阳股份"
+    eco_circle: core_resource
+    sub_industry: 无烟煤
+    four_signal_mode: resource_body
+    commodity: 动力煤
+  "600546":
+    name: "山煤国际"
+    eco_circle: core_resource
+    sub_industry: 动力煤
+    four_signal_mode: resource_body
+    commodity: 动力煤
+
+  # ── 核心资源：钢铁 ──────────────────────────────────────
+  "600019":
+    name: "宝钢股份"
+    eco_circle: core_resource
+    sub_industry: 板材
+    four_signal_mode: resource_body
+    commodity: 热卷
+  "000898":
+    name: "鞍钢股份"
+    eco_circle: core_resource
+    sub_industry: 板材
+    four_signal_mode: resource_body
+    commodity: 热卷
+  "600010":
+    name: "包钢股份"
+    eco_circle: core_resource
+    sub_industry: 钢铁+稀土
+    four_signal_mode: resource_body
+    commodity: 螺纹钢
+  "000932":
+    name: "华菱钢铁"
+    eco_circle: core_resource
+    sub_industry: 板材
+    four_signal_mode: resource_body
+    commodity: 热卷
+  "600022":
+    name: "山东钢铁"
+    eco_circle: core_resource
+    sub_industry: 建材
+    four_signal_mode: resource_body
+    commodity: 螺纹钢
+
+  # ── 核心资源：有色金属 ──────────────────────────────────
+  "601600":
+    name: "中国铝业"
+    eco_circle: core_resource
+    sub_industry: 铝
+    four_signal_mode: resource_body
+    commodity: 铝
+  "600362":
+    name: "江西铜业"
+    eco_circle: core_resource
+    sub_industry: 铜
+    four_signal_mode: resource_body
+    commodity: 铜
+  "601899":
+    name: "紫金矿业"
+    eco_circle: core_resource
+    sub_industry: 铜金
+    four_signal_mode: resource_body
+    commodity: 铜
+  "600547":
+    name: "山东黄金"
+    eco_circle: core_resource
+    sub_industry: 黄金
+    four_signal_mode: resource_body
+    commodity: 黄金
+  "600489":
+    name: "中金黄金"
+    eco_circle: core_resource
+    sub_industry: 黄金
+    four_signal_mode: resource_body
+    commodity: 黄金
+  "000630":
+    name: "铜陵有色"
+    eco_circle: core_resource
+    sub_industry: 铜
+    four_signal_mode: resource_body
+    commodity: 铜
+  "600111":
+    name: "北方稀土"
+    eco_circle: core_resource
+    sub_industry: 稀土
+    four_signal_mode: resource_body
+    commodity: 稀土
+
+  # ── 核心资源：化工 ──────────────────────────────────────
+  "600328":
+    name: "中盐化工"
+    eco_circle: core_resource
+    sub_industry: 纯碱
+    four_signal_mode: resource_body
+    commodity: 纯碱
+    industry_specific_modules:
+      - soda_ash_cost_curve
+      - soda_ash_supply
+      - mineral_rights_tracking
+    cost_items:
+      - 原盐
+      - 煤炭
+      - 电力
+      - 蒸汽
+      - 天然碱矿开采成本
+  "600426":
+    name: "华鲁恒升"
+    eco_circle: core_resource
+    sub_industry: 煤化工
+    four_signal_mode: resource_body
+    commodity: 尿素
+  "600989":
+    name: "宝丰能源"
+    eco_circle: core_resource
+    sub_industry: 煤化工
+    four_signal_mode: resource_body
+    commodity: 甲醇
+  "000792":
+    name: "盐湖股份"
+    eco_circle: core_resource
+    sub_industry: 钾肥+锂
+    four_signal_mode: resource_body
+    commodity: 纯碱
+  "002497":
+    name: "雅化集团"
+    eco_circle: core_resource
+    sub_industry: 民爆+锂
+    four_signal_mode: resource_body
+    commodity: 锂
+
+  # ── 核心资源：石油天然气 ─────────────────────────────────
+  "601857":
+    name: "中国石油"
+    eco_circle: core_resource
+    sub_industry: 石油天然气
+    four_signal_mode: resource_body
+    commodity: 石油天然气
+  "600028":
+    name: "中国石化"
+    eco_circle: core_resource
+    sub_industry: 石油化工
+    four_signal_mode: resource_body
+    commodity: 石油天然气
+  "600583":
+    name: "海油工程"
+    eco_circle: rigid_shovel
+    sub_industry: 油服
+    four_signal_mode: shovel_play
+    commodity: 石油天然气
+
+  # ── 刚性配套：民爆 ──────────────────────────────────────
+  "002037":
+    name: "保利联合"
+    eco_circle: rigid_shovel
+    sub_industry: 民爆
+    four_signal_mode: shovel_play
+    commodity: 民爆器材
+  "002096":
+    name: "南岭民爆"
+    eco_circle: rigid_shovel
+    sub_industry: 民爆
+    four_signal_mode: shovel_play
+    commodity: 民爆器材
+  "603227":
+    name: "雪峰科技"
+    eco_circle: rigid_shovel
+    sub_industry: 民爆
+    four_signal_mode: shovel_play
+    commodity: 民爆器材
+  "002783":
+    name: "凯龙股份"
+    eco_circle: rigid_shovel
+    sub_industry: 民爆
+    four_signal_mode: shovel_play
+    commodity: 民爆器材
+
+  # ── 刚性配套：工程机械 ──────────────────────────────────
+  "000425":
+    name: "徐工机械"
+    eco_circle: rigid_shovel
+    sub_industry: 工程机械
+    four_signal_mode: shovel_play
+    commodity: 工程机械
+  "600031":
+    name: "三一重工"
+    eco_circle: rigid_shovel
+    sub_industry: 工程机械
+    four_signal_mode: shovel_play
+    commodity: 工程机械
+    note: "民企，红牌闸门会标注"
+  "000528":
+    name: "柳工"
+    eco_circle: rigid_shovel
+    sub_industry: 工程机械
+    four_signal_mode: shovel_play
+    commodity: 工程机械
+
+  # ── 刚性配套：港口 ──────────────────────────────────────
+  "600018":
+    name: "上港集团"
+    eco_circle: rigid_shovel
+    sub_industry: 港口
+    four_signal_mode: shovel_play
+    commodity: 港口吞吐
+  "601018":
+    name: "宁波港"
+    eco_circle: rigid_shovel
+    sub_industry: 港口
+    four_signal_mode: shovel_play
+    commodity: 港口吞吐
+  "000905":
+    name: "厦门港务"
+    eco_circle: rigid_shovel
+    sub_industry: 港口
+    four_signal_mode: shovel_play
+    commodity: 港口吞吐
+
+  # ── 刚性配套：造船 ──────────────────────────────────────
+  "600150":
+    name: "中国船舶"
+    eco_circle: rigid_shovel
+    sub_industry: 造船
+    four_signal_mode: shovel_play
+    commodity: 造船
+  "601989":
+    name: "中国重工"
+    eco_circle: rigid_shovel
+    sub_industry: 造船+军工
+    four_signal_mode: shovel_play
+    commodity: 造船
+
+  # ── 核心军工 ────────────────────────────────────────────
+  "600893":
+    name: "航发动力"
+    eco_circle: core_military
+    sub_industry: 航空发动机
+    four_signal_mode: military
+    commodity: 军工
+  "600760":
+    name: "中航沈飞"
+    eco_circle: core_military
+    sub_industry: 战斗机
+    four_signal_mode: military
+    commodity: 军工
+  "600765":
+    name: "中航重机"
+    eco_circle: core_military
+    sub_industry: 军工锻铸
+    four_signal_mode: military
+    commodity: 军工
+  "600862":
+    name: "中航高科"
+    eco_circle: core_military
+    sub_industry: 航空新材料
+    four_signal_mode: military
+    commodity: 军工
+  "600879":
+    name: "航天电子"
+    eco_circle: core_military
+    sub_industry: 军工电子
+    four_signal_mode: military
+    commodity: 军工

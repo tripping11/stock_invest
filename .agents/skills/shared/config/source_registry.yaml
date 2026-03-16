@@ -1,0 +1,85 @@
+fields:
+  company_identity:
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: exchange_disclosure
+      - tier: 1
+        name: akshare_company_profile
+  business_model:
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: annual_report_mda
+      - tier: 1
+        name: investor_presentation
+  actual_controller:
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: annual_report_controller_section
+      - tier: 1
+        name: akshare_company_profile
+  revenue_breakdown:
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: annual_report_segment_note
+      - tier: 1
+        name: akshare_revenue_breakdown
+  net_profit:
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: audited_financials
+      - tier: 1
+        name: akshare_income_statement
+  total_equity:
+    required_tier: 0
+    sources:
+      - tier: 0
+        name: audited_balance_sheet
+      - tier: 1
+        name: akshare_balance_sheet
+  valuation_snapshot:
+    required_tier: 1
+    sources:
+      - tier: 1
+        name: market_quote
+      - tier: 1
+        name: akshare_valuation
+      - tier: 1
+        name: baostock_valuation
+  daily_kline:
+    required_tier: 1
+    sources:
+      - tier: 1
+        name: akshare_stock_kline
+      - tier: 1
+        name: baostock_daily_kline
+  stock_universe:
+    required_tier: 1
+    sources:
+      - tier: 1
+        name: akshare_stock_universe
+      - tier: 1
+        name: baostock_stock_universe
+  commodity_price:
+    required_tier: 2
+    sources:
+      - tier: 2
+        name: commodity_spot
+      - tier: 1
+        name: akshare_commodity
+  catalysts:
+    required_tier: 1
+    sources:
+      - tier: 0
+        name: exchange_announcements
+      - tier: 1
+        name: company_presentation
+
+global_rules:
+  freshness_days: 180
+  fallback_enabled: true
+  min_confidence_for_conclusion: medium

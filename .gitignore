@@ -1,0 +1,33 @@
+# Python cache and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local tool settings
+.claude/
+.idea/
+.vscode/
+
+# Optional vendored dependencies. These contain large binaries that GitHub
+# rejects in normal git pushes unless Git LFS is used.
+.vendor/
+
+# Generated research outputs
+data/
+evidence/
+reports/
+tmp/
+
+# Local reference material
+.agents/参考研报/
+
+# OS files
+Thumbs.db
+.DS_Store

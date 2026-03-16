@@ -1,0 +1,296 @@
+profiles:
+  纯碱:
+    aliases: ["纯碱", "苏打灰"]
+    spot_symbols: ["纯碱"]
+    futures_symbol: "SA0"
+    exchange_inventory_symbol: "纯碱"
+    tqsdk_symbol: "KQ.m@CZCE.SA"
+    industry_fai_labels: ["化学原料和化学制品制造业"]
+    conservative_high_anchor: 2000
+    social_inventory:
+      enabled: true
+      primary: "中国纯碱工业协会周报 / 生意社"
+      url: "https://www.100ppi.com/sf/day-850.html"
+      frequency: "周度"
+      fields: ["企业库存(万吨)", "社会库存(万吨)", "开工率(%)"]
+
+  动力煤:
+    aliases: ["动力煤", "无烟煤"]
+    spot_symbols: ["动力煤"]
+    futures_symbol: "ZC0"
+    exchange_inventory_symbol: ""
+    tqsdk_symbol: "KQ.m@CZCE.ZC"
+    industry_fai_labels: ["煤炭开采和洗选业"]
+    social_inventory:
+      enabled: true
+      primary: "CCTD / 秦皇岛港"
+      url: "https://www.cctd.com.cn/"
+      frequency: "日度"
+      fields: ["港口库存(万吨)", "电厂日耗(万吨)", "电厂库存(天)"]
+
+  焦煤:
+    aliases: ["焦煤"]
+    spot_symbols: ["焦煤"]
+    futures_symbol: "JM0"
+    exchange_inventory_symbol: "焦煤"
+    tqsdk_symbol: "KQ.m@DCE.JM"
+    industry_fai_labels: ["煤炭开采和洗选业"]
+    social_inventory:
+      enabled: true
+      primary: "钢联数据 / 生意社"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["港口库存(万吨)", "焦化厂库存(天)"]
+
+  焦炭:
+    aliases: ["焦炭"]
+    spot_symbols: ["焦炭"]
+    futures_symbol: "J0"
+    exchange_inventory_symbol: "焦炭"
+    tqsdk_symbol: "KQ.m@DCE.J"
+    industry_fai_labels: ["石油、煤炭及其他燃料加工业"]
+    social_inventory:
+      enabled: true
+      primary: "钢联数据"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["港口库存(万吨)", "钢厂库存(天)"]
+
+  铁矿石:
+    aliases: ["铁矿石"]
+    spot_symbols: ["铁矿石"]
+    futures_symbol: "I0"
+    exchange_inventory_symbol: "铁矿石"
+    tqsdk_symbol: "KQ.m@DCE.I"
+    industry_fai_labels: ["黑色金属矿采选业"]
+    social_inventory:
+      enabled: true
+      primary: "Mysteel / 港口库存"
+      url: "https://www.mysteel.com/"
+      frequency: "周度"
+      fields: ["港口库存(万吨)"]
+
+  螺纹钢:
+    aliases: ["螺纹钢", "钢材", "建材"]
+    spot_symbols: ["螺纹钢"]
+    futures_symbol: "RB0"
+    exchange_inventory_symbol: "螺纹钢"
+    tqsdk_symbol: "KQ.m@SHFE.RB"
+    industry_fai_labels: ["黑色金属冶炼和压延加工业"]
+    social_inventory:
+      enabled: true
+      primary: "Mysteel"
+      url: "https://www.mysteel.com/"
+      frequency: "周度"
+      fields: ["社会库存(万吨)", "钢厂库存(万吨)"]
+
+  热卷:
+    aliases: ["热卷", "板材"]
+    spot_symbols: ["热卷"]
+    futures_symbol: "HC0"
+    exchange_inventory_symbol: "热卷"
+    tqsdk_symbol: "KQ.m@SHFE.HC"
+    industry_fai_labels: ["黑色金属冶炼和压延加工业"]
+    social_inventory:
+      enabled: true
+      primary: "Mysteel"
+      url: "https://www.mysteel.com/"
+      frequency: "周度"
+      fields: ["社会库存(万吨)", "钢厂库存(万吨)"]
+
+  铜:
+    aliases: ["铜"]
+    spot_symbols: ["铜"]
+    futures_symbol: "CU0"
+    exchange_inventory_symbol: "沪铜"
+    tqsdk_symbol: "KQ.m@SHFE.CU"
+    industry_fai_labels: ["有色金属冶炼和压延加工业", "有色金属矿采选业"]
+    social_inventory:
+      enabled: true
+      primary: "上期所 / 保税区库存"
+      url: "https://www.shfe.com.cn/"
+      frequency: "日度/周度"
+      fields: ["交易所库存(吨)", "保税区库存(吨)"]
+
+  铝:
+    aliases: ["铝"]
+    spot_symbols: ["铝"]
+    futures_symbol: "AL0"
+    exchange_inventory_symbol: "沪铝"
+    tqsdk_symbol: "KQ.m@SHFE.AL"
+    industry_fai_labels: ["有色金属冶炼和压延加工业", "有色金属矿采选业"]
+    social_inventory:
+      enabled: true
+      primary: "上期所 / 社会库存周报"
+      url: "https://www.shfe.com.cn/"
+      frequency: "日度/周度"
+      fields: ["交易所库存(吨)", "社会库存(万吨)"]
+
+  黄金:
+    aliases: ["黄金"]
+    spot_symbols: ["黄金"]
+    futures_symbol: "AU0"
+    exchange_inventory_symbol: "沪金"
+    tqsdk_symbol: "KQ.m@SHFE.AU"
+    industry_fai_labels: ["有色金属矿采选业"]
+    social_inventory:
+      enabled: false
+
+  白银:
+    aliases: ["白银"]
+    spot_symbols: ["白银"]
+    futures_symbol: "AG0"
+    exchange_inventory_symbol: "沪银"
+    tqsdk_symbol: "KQ.m@SHFE.AG"
+    industry_fai_labels: ["有色金属冶炼和压延加工业"]
+    social_inventory:
+      enabled: false
+
+  尿素:
+    aliases: ["尿素"]
+    spot_symbols: ["尿素"]
+    futures_symbol: "UR0"
+    exchange_inventory_symbol: "尿素"
+    tqsdk_symbol: "KQ.m@CZCE.UR"
+    industry_fai_labels: ["化学原料和化学制品制造业"]
+    social_inventory:
+      enabled: true
+      primary: "生意社 / 行业协会"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["工厂库存", "港口库存"]
+
+  甲醇:
+    aliases: ["甲醇"]
+    spot_symbols: ["甲醇"]
+    futures_symbol: "MA0"
+    exchange_inventory_symbol: "甲醇"
+    tqsdk_symbol: "KQ.m@CZCE.MA"
+    industry_fai_labels: ["石油、煤炭及其他燃料加工业", "化学原料和化学制品制造业"]
+    social_inventory:
+      enabled: true
+      primary: "生意社 / 隆众"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["港口库存", "内地样本库存"]
+
+  PVC:
+    aliases: ["PVC"]
+    spot_symbols: ["PVC"]
+    futures_symbol: "V0"
+    exchange_inventory_symbol: "PVC"
+    tqsdk_symbol: "KQ.m@DCE.V"
+    industry_fai_labels: ["化学原料和化学制品制造业"]
+    social_inventory:
+      enabled: true
+      primary: "生意社 / 隆众"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["社会库存", "企业库存"]
+
+  烧碱:
+    aliases: ["烧碱", "氯碱"]
+    spot_symbols: ["烧碱"]
+    futures_symbol: "SH0"
+    exchange_inventory_symbol: "烧碱"
+    tqsdk_symbol: "KQ.m@CZCE.SH"
+    industry_fai_labels: ["化学原料和化学制品制造业"]
+    social_inventory:
+      enabled: true
+      primary: "生意社 / 行业协会"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["厂库", "样本库存"]
+
+  工业硅:
+    aliases: ["工业硅"]
+    spot_symbols: ["工业硅"]
+    futures_symbol: "SI0"
+    exchange_inventory_symbol: "工业硅"
+    tqsdk_symbol: "KQ.m@GFEX.SI"
+    industry_fai_labels: ["有色金属冶炼和压延加工业"]
+    social_inventory:
+      enabled: true
+      primary: "SMM / 百川盈孚"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["社会库存", "工厂库存"]
+
+  碳酸锂:
+    aliases: ["碳酸锂", "锂"]
+    spot_symbols: ["碳酸锂"]
+    futures_symbol: "LC0"
+    exchange_inventory_symbol: "碳酸锂"
+    tqsdk_symbol: "KQ.m@GFEX.LC"
+    industry_fai_labels: ["有色金属冶炼和压延加工业", "化学原料和化学制品制造业"]
+    social_inventory:
+      enabled: true
+      primary: "SMM / 百川盈孚"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["样本库存", "冶炼厂库存"]
+
+  稀土:
+    aliases: ["稀土"]
+    spot_symbols: ["稀土"]
+    industry_fai_labels: ["有色金属冶炼和压延加工业", "有色金属矿采选业"]
+    exchange_inventory_enabled: false
+    social_inventory:
+      enabled: true
+      primary: "SMM / 亚洲金属网"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["样本库存"]
+
+  石油天然气:
+    aliases: ["石油天然气", "原油", "天然气", "油服"]
+    spot_symbols: ["原油"]
+    futures_symbol: "SC0"
+    tqsdk_symbol: "KQ.m@INE.SC"
+    industry_fai_labels: ["石油和天然气开采业", "专用设备制造业"]
+    exchange_inventory_enabled: false
+    social_inventory:
+      enabled: true
+      primary: "EIA / Cushing / 隆众"
+      url: "https://www.100ppi.com/"
+      frequency: "周度"
+      fields: ["原油库存", "天然气库存"]
+
+  民爆器材:
+    aliases: ["民爆器材", "民爆"]
+    price_proxy: "动力煤"
+    industry_fai_labels: ["化学原料和化学制品制造业"]
+    exchange_inventory_enabled: false
+    social_inventory:
+      enabled: false
+
+  工程机械:
+    aliases: ["工程机械", "矿山设备"]
+    price_proxy: "螺纹钢"
+    industry_fai_labels: ["专用设备制造业", "通用设备制造业"]
+    exchange_inventory_enabled: false
+    social_inventory:
+      enabled: false
+
+  港口吞吐:
+    aliases: ["港口吞吐", "港口"]
+    price_proxy: "动力煤"
+    industry_fai_labels: ["装卸搬运和仓储业", "水上运输业", "交通运输、仓储和邮政业"]
+    exchange_inventory_enabled: false
+    social_inventory:
+      enabled: false
+
+  造船:
+    aliases: ["造船", "船舶"]
+    price_proxy: "热卷"
+    industry_fai_labels: ["铁路、船舶、航空航天和其他运输设备制造业"]
+    exchange_inventory_enabled: false
+    social_inventory:
+      enabled: false
+
+  军工:
+    aliases: ["军工", "国防军工"]
+    industry_fai_labels: ["铁路、船舶、航空航天和其他运输设备制造业"]
+    exchange_inventory_enabled: false
+    social_inventory:
+      enabled: false

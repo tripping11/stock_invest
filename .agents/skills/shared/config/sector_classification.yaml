@@ -1,0 +1,129 @@
+opportunity_types:
+  compounder:
+    label: "Compounder"
+    keywords:
+      - 白酒
+      - 食品饮料
+      - 调味品
+      - 家电
+      - 品牌消费
+      - 连锁
+      - 医疗服务
+      - 医药商业
+      - 互联网服务
+      - 软件开发
+      - SaaS
+      - 云服务
+      - 高端制造
+    signals:
+      - 品牌
+      - 复购
+      - 会员
+      - 渠道
+      - 提价
+      - 高毛利
+      - 现金流
+  cyclical:
+    label: "Cyclical"
+    keywords:
+      - 煤炭
+      - 钢铁
+      - 有色
+      - 铜
+      - 铝
+      - 黄金
+      - 石油
+      - 石化
+      - 化工
+      - 纯碱
+      - 玻璃
+      - 水泥
+      - 航运
+      - 造船
+      - 工程机械
+      - 港口
+      - 纸浆
+      - 养殖
+      - 周期
+    signals:
+      - 产能
+      - 库存
+      - 价格
+      - 成本曲线
+      - capex
+      - 景气
+      - 顺周期
+  turnaround:
+    label: "Turnaround"
+    keywords:
+      - "ST"
+      - "*ST"
+      - 扭亏
+      - 纾困
+      - 困境反转
+      - 债务重组
+      - 降本增效
+      - 亏损收窄
+      - 资产盘活
+      - 摘帽
+    signals:
+      - 重整
+      - 重组
+      - 债转股
+      - 现金流修复
+      - 经营改善
+  asset_play:
+    label: "Asset play"
+    keywords:
+      - 银行
+      - 券商
+      - 保险
+      - 地产
+      - 物业
+      - 港口
+      - 公路
+      - 园区
+      - 资源储量
+      - 土地储备
+      - 净资产
+      - REIT
+    signals:
+      - NAV
+      - SOTP
+      - 重估
+      - 分红
+      - 回购
+      - 隐含价值
+  special_situation:
+    label: "Special situation"
+    keywords:
+      - 分拆上市
+      - 破产重整
+      - 要约收购
+      - 吸收合并
+      - 重大资产重组
+      - 资产注入
+      - 私有化
+      - 回购注销
+      - 清算
+    signals:
+      - 方案落地
+      - 审批
+      - 股东大会
+      - 监管批复
+      - 交易对价
+
+company_overrides:
+  "600328":
+    name: "中盐化工"
+    primary_type: "cyclical"
+    secondary_types:
+      - "asset_play"
+  "600348":
+    name: "华阳股份"
+    primary_type: "cyclical"
+  "600893":
+    name: "航发动力"
+    primary_type: "special_situation"
+    secondary_types:
+      - "compounder"

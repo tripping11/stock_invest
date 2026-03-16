@@ -1,0 +1,47 @@
+dimensions:
+  opportunity_type_clarity:
+    label: "Opportunity type clarity"
+    weight: 5
+    description: "Can the stock be cleanly typed before deeper work starts?"
+  business_quality:
+    label: "Business quality"
+    weight: 20
+    description: "How understandable, durable, and economically coherent is the business?"
+  survival_boundary:
+    label: "Survival boundary"
+    weight: 15
+    description: "Can the company survive adverse scenarios without obvious impairment?"
+  management_capital_allocation:
+    label: "Management and capital allocation"
+    weight: 10
+    description: "Does management behave credibly and allocate capital rationally?"
+  regime_cycle_position:
+    label: "Regime / cycle position"
+    weight: 15
+    description: "Does macro, industry, pricing, and policy context help or hurt the thesis?"
+  valuation_margin_of_safety:
+    label: "Valuation and margin of safety"
+    weight: 20
+    description: "Is the current price below a conservative value range?"
+  catalyst_value_realization:
+    label: "Catalyst and value realization"
+    weight: 10
+    description: "Is there a plausible path to rerating or value unlock?"
+  market_structure_tradability:
+    label: "Market structure and tradability"
+    weight: 5
+    description: "Is the name sufficiently liquid, observable, and practical to own?"
+
+verdict:
+  - range: "85-100"
+    label: "high conviction / strong candidate"
+    action: "build aggressively if price is right"
+  - range: "75-84.99"
+    label: "reasonable candidate / starter possible"
+    action: "starter only or immediate deep dive"
+  - range: "65-74.99"
+    label: "watchlist / incomplete edge"
+    action: "watch only and wait for better evidence"
+  - range: "0-64.99"
+    label: "reject / no action"
+    action: "do not allocate capital"
