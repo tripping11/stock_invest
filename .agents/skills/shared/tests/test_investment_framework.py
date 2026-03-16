@@ -1368,5 +1368,39 @@ class VCRFConfigContractTests(unittest.TestCase):
         self.assertEqual(cfg["harvest_candidate"]["consecutive_closes_above_recognition"], 3)
 
 
+class VCRFDataSourceTests(unittest.TestCase):
+    def test_akshare_adapter_exposes_cashflow_statement_step(self) -> None:
+        from adapters.akshare_adapter import RADAR_ALL_STEPS
+
+        self.assertIn("cashflow_statement", RADAR_ALL_STEPS)
+
+    def test_akshare_adapter_exposes_shareholder_count_step(self) -> None:
+        from adapters.akshare_adapter import RADAR_PARTIAL_STEPS
+
+        self.assertIn("shareholder_count", RADAR_PARTIAL_STEPS)
+
+    def test_cninfo_adapter_exposes_vcrf_event_query(self) -> None:
+        from adapters.cninfo_adapter import fetch_vcrf_event_signals
+
+        result = fetch_vcrf_event_signals("600348", start_date="20240101", end_date="20241231")
+        self.assertIn("events", result)
+
+
+class VCRFStateHistoryTests(unittest.TestCase):
+    def test_missing_history_resolves_to_new_state(self) -> None:
+        from engines.state_transition_tracker import load_latest_state
+
+        self.assertEqual(load_latest_state("600348", history_path="missing.jsonl"), "NEW")
+
+    def test_forbidden_transition_is_downgraded(self) -> None:
+        from engines.state_transition_tracker import enforce_transition
+        from utils.config_loader import load_vcrf_state_machine
+
+        state, allowed, reason = enforce_transition("HARVEST", "ATTACK", cfg=load_vcrf_state_machine())
+        self.assertEqual(state, "COLD_STORAGE")
+        self.assertFalse(allowed)
+        self.assertTrue(reason)
+
+
 if __name__ == "__main__":
     unittest.main()

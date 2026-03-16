@@ -101,3 +101,52 @@ def get_latest_balance_snapshot(records: list[dict[str, Any]]) -> dict[str, Any]
         ),
         "raw": row,
     }
+
+
+def get_latest_cashflow_snapshot(records: list[dict[str, Any]]) -> dict[str, Any]:
+    row = select_latest_record(records)
+    if not row:
+        return {"report_date": "", "operating_cashflow": None, "raw": {}}
+    return {
+        "report_date": normalize_text(extract_first_value(row, ("报告日期", "报告期", "报告日"))),
+        "operating_cashflow": safe_float(
+            extract_first_value(
+                row,
+                (
+                    "经营活动产生的现金流量净额",
+                    "经营活动产生的现金流量净额（元）",
+                    "经营现金流量净额",
+                    "经营活动现金流量净额",
+                ),
+            )
+        ),
+        "raw": row,
+    }
+
+
+def extract_short_term_interest_bearing_debt(balance_row: dict[str, Any]) -> float | None:
+    return safe_float(
+        extract_first_value(
+            balance_row,
+            (
+                "短期借款",
+                "一年内到期的非流动负债",
+                "应付短期融资款",
+                "应付债券",
+            ),
+        )
+    )
+
+
+def extract_cash_and_equivalents(balance_row: dict[str, Any]) -> float | None:
+    return safe_float(
+        extract_first_value(
+            balance_row,
+            (
+                "货币资金",
+                "现金及现金等价物余额",
+                "货币资金(元)",
+                "cash_and_equivalents",
+            ),
+        )
+    )
