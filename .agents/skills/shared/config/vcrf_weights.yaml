@@ -1,0 +1,101 @@
+_meta:
+  enforce_normalization: true
+  tolerance: 0.001
+
+base_templates:
+  compounder:
+    underwrite:
+      intrinsic_value_floor: 0.18
+      survival_boundary: 0.22
+      governance_anti_fraud: 0.18
+      business_or_asset_quality: 0.20
+      normalized_earnings_power: 0.22
+    realization:
+      repair_state: 0.10
+      regime_cycle_position: 0.10
+      marginal_buyer_probability: 0.15
+      flow_confirmation: 0.15
+      elasticity: 0.10
+      catalyst_quality: 0.40
+  cyclical:
+    underwrite:
+      intrinsic_value_floor: 0.20
+      survival_boundary: 0.25
+      governance_anti_fraud: 0.10
+      business_or_asset_quality: 0.20
+      normalized_earnings_power: 0.25
+    realization:
+      repair_state: 0.20
+      regime_cycle_position: 0.30
+      marginal_buyer_probability: 0.05
+      flow_confirmation: 0.15
+      elasticity: 0.20
+      catalyst_quality: 0.10
+  turnaround:
+    underwrite:
+      intrinsic_value_floor: 0.18
+      survival_boundary: 0.34
+      governance_anti_fraud: 0.18
+      business_or_asset_quality: 0.10
+      normalized_earnings_power: 0.20
+    realization:
+      repair_state: 0.30
+      regime_cycle_position: 0.10
+      marginal_buyer_probability: 0.10
+      flow_confirmation: 0.15
+      elasticity: 0.10
+      catalyst_quality: 0.25
+  asset_play:
+    underwrite:
+      intrinsic_value_floor: 0.30
+      survival_boundary: 0.18
+      governance_anti_fraud: 0.18
+      business_or_asset_quality: 0.14
+      normalized_earnings_power: 0.20
+    realization:
+      repair_state: 0.10
+      regime_cycle_position: 0.10
+      marginal_buyer_probability: 0.15
+      flow_confirmation: 0.10
+      elasticity: 0.15
+      catalyst_quality: 0.40
+  special_situation:
+    underwrite:
+      intrinsic_value_floor: 0.24
+      survival_boundary: 0.22
+      governance_anti_fraud: 0.22
+      business_or_asset_quality: 0.12
+      normalized_earnings_power: 0.20
+    realization:
+      repair_state: 0.12
+      regime_cycle_position: 0.08
+      marginal_buyer_probability: 0.20
+      flow_confirmation: 0.10
+      elasticity: 0.10
+      catalyst_quality: 0.40
+
+sector_overrides:
+  core_resource:
+    underwrite:
+      normalized_earnings_power: -0.05
+      intrinsic_value_floor: 0.05
+  rigid_shovel:
+    realization:
+      catalyst_quality: 0.05
+      elasticity: -0.05
+  core_military:
+    underwrite:
+      business_or_asset_quality: 0.05
+      normalized_earnings_power: -0.05
+  financial_asset:
+    underwrite:
+      intrinsic_value_floor: 0.05
+      business_or_asset_quality: -0.05
+  consumer:
+    realization:
+      catalyst_quality: 0.05
+      elasticity: -0.05
+  tech:
+    realization:
+      marginal_buyer_probability: 0.05
+      catalyst_quality: -0.05

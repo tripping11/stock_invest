@@ -1,0 +1,41 @@
+state_thresholds:
+  reject_underwrite_below: 60
+  cold_storage:
+    min_underwrite: 75
+    max_realization: 39.999
+  ready:
+    min_underwrite: 70
+    min_realization: 40
+    max_realization: 70
+  attack:
+    min_underwrite: 75
+    min_realization: 70
+  harvest:
+    recognition_upside_max: 0.0
+    crowded_flow_stage: crowded
+
+flow_stage_order:
+  abandoned: 0
+  latent: 1
+  ignition: 2
+  trend: 3
+  crowded: 4
+
+allowed_transitions:
+  NEW: [REJECT, COLD_STORAGE, READY, ATTACK, HARVEST]
+  REJECT: [COLD_STORAGE]
+  COLD_STORAGE: [READY, REJECT]
+  READY: [ATTACK, COLD_STORAGE]
+  ATTACK: [HARVEST, READY]
+  HARVEST: [COLD_STORAGE]
+
+forbidden_transitions:
+  - [HARVEST, ATTACK]
+  - [REJECT, READY]
+  - [REJECT, ATTACK]
+
+harvest_candidate:
+  consecutive_closes_above_recognition: 3
+  breakout_day_return_pct: 0.10
+  breakout_close_to_recognition_ratio: 0.95
+  require_flow_stage_deterioration_to: crowded

@@ -39,6 +39,22 @@ from utils.financial_snapshot import (  # noqa: F401
     get_latest_income_snapshot,
 )
 
+from utils.primary_type_router import (  # noqa: F401
+    build_driver_stack,
+    determine_primary_type,
+    infer_preliminary_cycle_state,
+    resolve_sector_route,
+)
+from utils.vcrf_probes import (  # noqa: F401
+    assess_business_or_asset_quality,
+    assess_governance_anti_fraud,
+    assess_intrinsic_value_floor,
+    assess_normalized_earnings_power,
+    assess_survival_boundary,
+    detect_big_bath,
+    score_underwrite_axis,
+)
+
 # ── re-exports from opportunity_classifier ───────────────────
 from utils.opportunity_classifier import (  # noqa: F401
     BAD_MANAGEMENT_KEYWORDS,

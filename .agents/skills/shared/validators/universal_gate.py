@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from engines.flow_realization_engine import FlowInputs, classify_position_state, score_flow_setup
+from engines.flow_realization_engine import score_realization_axis
+from engines.state_transition_tracker import enforce_transition
 from engines.valuation_engine import build_three_case_valuation
-from utils.config_loader import load_scoring_rules
+from utils.config_loader import load_scoring_rules, load_vcrf_degradation, load_vcrf_state_machine
 from utils.financial_snapshot import (
     extract_latest_price,
     extract_market_cap,
@@ -21,7 +22,9 @@ from utils.opportunity_classifier import (
     classify_state_ownership,
     determine_opportunity_type,
 )
+from utils.primary_type_router import build_driver_stack
 from utils.score_verdict import pick_score_verdict
+from utils.vcrf_probes import score_underwrite_axis
 from utils.value_utils import clamp, normalize_text, safe_float
 
 
@@ -67,65 +70,13 @@ def _load_dimension_max() -> dict[str, float]:
 
 
 DIMENSION_MAX = _load_dimension_max()
-
-_LEGACY_VERDICT_LABELS = {
-    "high conviction / attack candidate": "high conviction / strong candidate",
-    "strong candidate / ready": "reasonable candidate / starter possible",
-    "cold-storage / watchlist": "watch / needs work",
+_STATE_ORDER = {
+    "REJECT": 0,
+    "COLD_STORAGE": 1,
+    "READY": 2,
+    "ATTACK": 3,
+    "HARVEST": 4,
 }
-
-_VCRF_DIMENSION_FALLBACKS = {
-    "thesis_clarity": 5.0,
-    "intrinsic_value_floor": 20.0,
-    "survival_boundary": 15.0,
-    "governance_anti_fraud": 10.0,
-    "business_or_asset_quality": 10.0,
-    "regime_cycle_position": 15.0,
-    "turnaround_catalyst": 10.0,
-    "flow_realization_and_elasticity": 15.0,
-}
-
-
-def _pick_numeric(source: dict[str, Any], *keys: str) -> float | None:
-    for key in keys:
-        if key in source:
-            numeric = safe_float(source.get(key))
-            if numeric is not None:
-                return numeric
-    return None
-
-
-def _load_vcrf_dimension_max() -> dict[str, float]:
-    try:
-        dimensions = load_scoring_rules().get("dimensions", {})
-    except Exception:
-        return dict(_VCRF_DIMENSION_FALLBACKS)
-
-    result = dict(_VCRF_DIMENSION_FALLBACKS)
-    for key, fallback in _VCRF_DIMENSION_FALLBACKS.items():
-        entry = dimensions.get(key, {})
-        weight = entry.get("weight") if isinstance(entry, dict) else None
-        result[key] = float(weight) if isinstance(weight, (int, float)) else fallback
-    return result
-
-
-def _load_weight_template(primary_type: str) -> dict[str, float]:
-    rules = load_scoring_rules()
-    template = (rules.get("weight_templates", {}) or {}).get(primary_type, {}) or {}
-    if template:
-        return {key: float(value) for key, value in template.items() if isinstance(value, (int, float))}
-    return {
-        "intrinsic_value_floor": _VCRF_DIMENSION_FALLBACKS["intrinsic_value_floor"],
-        "survival_boundary": _VCRF_DIMENSION_FALLBACKS["survival_boundary"],
-        "governance_anti_fraud": _VCRF_DIMENSION_FALLBACKS["governance_anti_fraud"],
-        "business_or_asset_quality": _VCRF_DIMENSION_FALLBACKS["business_or_asset_quality"],
-        "regime_cycle_position": _VCRF_DIMENSION_FALLBACKS["regime_cycle_position"],
-        "turnaround_catalyst": _VCRF_DIMENSION_FALLBACKS["turnaround_catalyst"],
-        "flow_realization_and_elasticity": _VCRF_DIMENSION_FALLBACKS["flow_realization_and_elasticity"],
-    }
-
-
-VCRF_DIMENSION_MAX = _load_vcrf_dimension_max()
 
 
 def _status_from_score(score: float, passing: float, caution: float) -> str:
@@ -134,6 +85,21 @@ def _status_from_score(score: float, passing: float, caution: float) -> str:
     if score >= caution:
         return "caution"
     return "fail"
+
+
+def _apply_degradation_caps(proposed_state: str, component_availability: dict[str, str]) -> str:
+    degradation = load_vcrf_degradation().get("degradation_rules", {})
+    current_state = str(proposed_state or "REJECT").upper()
+    current_rank = _STATE_ORDER.get(current_state, 0)
+    for component, availability in component_availability.items():
+        if str(availability).lower() != "missing":
+            continue
+        rule = (degradation.get("underwrite", {}) or {}).get(component, {})
+        cap_state = str(rule.get("cap_state", "")).upper()
+        if cap_state and _STATE_ORDER.get(cap_state, current_rank) < current_rank:
+            current_state = cap_state
+            current_rank = _STATE_ORDER[cap_state]
+    return current_state
 
 
 def _valuation_score(primary_type: str, pb: float | None, current_vs_high: float | None) -> tuple[float, str]:
@@ -183,210 +149,6 @@ def _valuation_score(primary_type: str, pb: float | None, current_vs_high: float
             reasons.append(f"price already near historical highs at {current_vs_high:.1f}%")
 
     return clamp(score, 0.0, DIMENSION_MAX["valuation"]), "; ".join(reasons) if reasons else "valuation signal is mixed"
-
-
-def _legacy_verdict_from_vcrf(label: str, hard_vetos: list[str]) -> str:
-    if hard_vetos:
-        return "reject / no action"
-    return _LEGACY_VERDICT_LABELS.get(label, label)
-
-
-def _legacy_verdict_from_total(total_score: float, hard_vetos: list[str]) -> str:
-    if hard_vetos:
-        return "reject / no action"
-    if total_score >= 85.0:
-        return "high conviction / strong candidate"
-    if total_score >= 75.0:
-        return "reasonable candidate / starter possible"
-    if total_score >= 65.0:
-        return "watch / needs work"
-    return "reject / no action"
-
-
-def _infer_repair_state(context: dict[str, Any]) -> str:
-    profit = safe_float(context["latest_income"].get("net_profit"))
-    equity = safe_float(context["latest_balance"].get("total_equity"))
-    catalyst_score = safe_float(context["catalyst"].get("score")) or 0.0
-    bottom_signal = normalize_text(context["bottom_pattern"].get("signal")).lower()
-    primary_type = normalize_text(context["opportunity_context"].get("primary_type")).lower()
-
-    if equity is not None and equity <= 0:
-        return "none"
-    if profit is not None and profit > 0 and (bottom_signal == "favorable" or catalyst_score >= 6.0):
-        return "confirmed" if primary_type in {"turnaround", "special_situation"} else "repairing"
-    if bottom_signal == "favorable" or catalyst_score >= 4.0:
-        return "repairing" if primary_type in {"turnaround", "special_situation"} else "stabilizing"
-    return "stabilizing" if primary_type in {"cyclical", "asset_play"} else "none"
-
-
-def _infer_flow_inputs(context: dict[str, Any]) -> FlowInputs:
-    kline = context["kline"] or {}
-    current_price = safe_float(context["current_price"])
-    current_vs_high = safe_float(context["current_vs_high"])
-    current_vs_low = _pick_numeric(kline, "rebound_from_low_pct", "rebound_from_60d_low_pct", "rebound_from_52w_low_pct")
-    if current_vs_low is None and current_price not in (None, 0):
-        low_anchor = _pick_numeric(kline, "low_60d", "low_120d", "low_250d", "low_52w", "year_low", "period_low")
-        if low_anchor not in (None, 0):
-            current_vs_low = current_price / low_anchor - 1
-
-    catalyst_text = " ".join(
-        [
-            normalize_text(context["catalyst"].get("reason")),
-            " ".join(context["catalyst"].get("catalysts", []) or []),
-            normalize_text(context["business_text"]),
-        ]
-    )
-    buyback_flag = any(token in catalyst_text.lower() for token in ("buyback", "回购", "增持"))
-    mna_flag = any(token in catalyst_text.lower() for token in ("m&a", "并购", "重组", "注入", "资产收购"))
-
-    rel_strength_20d = _pick_numeric(kline, "rel_strength_20d", "relative_strength_20d", "rs_20d")
-    rel_strength_60d = _pick_numeric(kline, "rel_strength_60d", "relative_strength_60d", "rs_60d")
-    if rel_strength_20d is None and current_vs_high is not None:
-        rel_strength_20d = current_vs_high / 100 - 0.55
-
-    return FlowInputs(
-        current_price=current_price,
-        avg20_turnover=_pick_numeric(kline, "avg20_turnover", "avg_turnover_20d", "turnover_avg20", "turnover_20d"),
-        avg120_turnover=_pick_numeric(kline, "avg120_turnover", "avg_turnover_120d", "turnover_avg120", "turnover_120d"),
-        rel_strength_20d=rel_strength_20d,
-        rel_strength_60d=rel_strength_60d,
-        rebound_from_low_pct=current_vs_low,
-        shareholder_concentration_delta=_pick_numeric(kline, "shareholder_concentration_delta"),
-        institutional_holding_delta=_pick_numeric(kline, "institutional_holding_delta"),
-        buyback_flag=buyback_flag,
-        mna_flag=mna_flag,
-    )
-
-
-def _proxy_floor_metrics(
-    context: dict[str, Any],
-    valuation_summary: dict[str, Any],
-) -> tuple[float | None, float | None, float | None]:
-    floor_protection = safe_float(valuation_summary.get("floor_protection"))
-    normalized_upside = safe_float(valuation_summary.get("normalized_upside"))
-    recognition_upside = safe_float(valuation_summary.get("recognition_upside"))
-    pb = safe_float(context["pb"])
-    current_vs_high = safe_float(context["current_vs_high"])
-    primary_type = normalize_text(context["opportunity_context"].get("primary_type")).lower()
-
-    if floor_protection is None or (
-        floor_protection is not None
-        and floor_protection < 0.3
-        and primary_type in {"cyclical", "asset_play", "turnaround"}
-        and pb is not None
-        and pb <= 1.2
-    ):
-        if pb is not None and pb <= 0.8:
-            floor_protection = max(floor_protection or 0.0, 0.95)
-        elif pb is not None and pb <= 1.0:
-            floor_protection = max(floor_protection or 0.0, 0.90)
-        elif pb is not None and pb <= 1.2:
-            floor_protection = max(floor_protection or 0.0, 0.82)
-
-    if normalized_upside is None or (
-        normalized_upside is not None
-        and normalized_upside < 0.1
-        and primary_type in {"cyclical", "asset_play", "turnaround"}
-        and pb is not None
-        and pb <= 1.2
-    ):
-        if pb is not None and pb <= 1.0 and current_vs_high is not None and current_vs_high <= 55:
-            normalized_upside = max(normalized_upside or 0.0, 0.45)
-        elif pb is not None and pb <= 1.2:
-            normalized_upside = max(normalized_upside or 0.0, 0.28)
-
-    if recognition_upside is None and normalized_upside is not None:
-        recognition_upside = normalized_upside + 0.15
-    elif recognition_upside is not None and normalized_upside is not None:
-        recognition_upside = max(recognition_upside, normalized_upside)
-
-    return floor_protection, normalized_upside, recognition_upside
-
-
-def _score_intrinsic_value_floor(
-    floor_protection: float | None,
-    normalized_upside: float | None,
-    recognition_upside: float | None,
-) -> float:
-    score = 6.0
-    if floor_protection is not None:
-        if floor_protection >= 1.0:
-            score += 8.0
-        elif floor_protection >= 0.9:
-            score += 6.0
-        elif floor_protection >= 0.8:
-            score += 4.0
-        elif floor_protection >= 0.7:
-            score += 2.0
-        else:
-            score -= 2.0
-    if normalized_upside is not None:
-        if normalized_upside >= 0.4:
-            score += 5.0
-        elif normalized_upside >= 0.25:
-            score += 3.0
-        elif normalized_upside >= 0.1:
-            score += 1.5
-        elif normalized_upside < 0:
-            score -= 3.0
-    if recognition_upside is not None and recognition_upside >= 0.5:
-        score += 1.0
-    return clamp(score, 0.0, VCRF_DIMENSION_MAX["intrinsic_value_floor"])
-
-
-def _score_business_or_asset_quality(business_quality_score: float) -> float:
-    return clamp(
-        business_quality_score / max(DIMENSION_MAX["business_quality"], 1.0) * VCRF_DIMENSION_MAX["business_or_asset_quality"],
-        0.0,
-        VCRF_DIMENSION_MAX["business_or_asset_quality"],
-    )
-
-
-def _score_governance(context: dict[str, Any]) -> float:
-    red_flags = context["management"].get("red_flags", []) or []
-    score = 3.5 + float(context["management"]["score"]) * 0.7 + (1.0 if context["ownership"].get("is_state_owned") else 0.0)
-    score -= min(3.0, len(red_flags) * 1.5)
-    return clamp(score, 0.0, VCRF_DIMENSION_MAX["governance_anti_fraud"])
-
-
-def _score_flow_realization(
-    context: dict[str, Any],
-    flow_setup: dict[str, Any],
-    position_state: str,
-) -> float:
-    stage_score = {
-        "abandoned": 1.0,
-        "latent": 4.0,
-        "ignition": 8.0,
-        "trend": 12.0,
-        "crowded": 9.0,
-    }.get(flow_setup.get("stage"), 3.0)
-    state_bonus = {
-        "reject": -2.0,
-        "cold_storage": 1.5,
-        "ready": 3.0,
-        "attack": 4.0,
-        "harvest": 0.5,
-    }.get(position_state, 0.0)
-    elasticity = 0.0
-    market_cap = safe_float(context["market_cap"])
-    if market_cap is not None:
-        if market_cap <= 8e9:
-            elasticity = 2.0
-        elif market_cap <= 3e10:
-            elasticity = 1.2
-        elif market_cap <= 1e11:
-            elasticity = 0.6
-    score = stage_score + state_bonus + elasticity
-    return clamp(score, 0.0, VCRF_DIMENSION_MAX["flow_realization_and_elasticity"])
-
-
-def _status_for_value_floor(score: float) -> str:
-    return _status_from_score(score, 14.0, 9.0)
-
-
-def _status_for_realization(score: float) -> str:
-    return _status_from_score(score, 9.0, 5.0)
 
 
 def _resolve_gate_context(
@@ -543,6 +305,114 @@ def _dimension_payload(
     }
 
 
+def _component_gate(component: dict[str, Any], *, passing: float, caution: float) -> dict[str, Any]:
+    score = safe_float(component.get("score")) or 0.0
+    return {
+        "status": _status_from_score(score, passing, caution),
+        "reason": component.get("reason", ""),
+        "score": round(score, 2),
+        "availability": component.get("availability", "unknown"),
+        "confidence": component.get("confidence", "unknown"),
+    }
+
+
+def _merge_opportunity_context(legacy_context: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(legacy_context or {})
+    primary_type = normalize_text(driver_stack.get("primary_type")).lower()
+    merged["primary_type"] = primary_type or merged.get("primary_type", "unknown")
+    merged["sector_route"] = normalize_text(driver_stack.get("sector_route")).lower()
+    merged["primary_type_confidence"] = driver_stack.get("primary_type_confidence")
+    if not merged.get("primary_label"):
+        merged["primary_label"] = (primary_type or "unknown").replace("_", " ").title()
+    return merged
+
+
+def _classify_vcrf_state(
+    underwrite_score: float,
+    realization_score: float,
+    *,
+    flow_stage: str,
+    valuation_summary: dict[str, Any],
+) -> str:
+    cfg = load_vcrf_state_machine().get("state_thresholds", {})
+    reject_floor = float(cfg.get("reject_underwrite_below", 60))
+    cold_cfg = cfg.get("cold_storage", {}) or {}
+    ready_cfg = cfg.get("ready", {}) or {}
+    attack_cfg = cfg.get("attack", {}) or {}
+    harvest_cfg = cfg.get("harvest", {}) or {}
+
+    recognition_upside = safe_float(valuation_summary.get("recognition_upside"))
+    crowded_flow_stage = normalize_text(harvest_cfg.get("crowded_flow_stage")).lower()
+    if underwrite_score < reject_floor:
+        return "REJECT"
+    if recognition_upside is not None and recognition_upside <= safe_float(harvest_cfg.get("recognition_upside_max")):
+        return "HARVEST"
+    if crowded_flow_stage and normalize_text(flow_stage).lower() == crowded_flow_stage:
+        return "HARVEST"
+    if underwrite_score >= float(attack_cfg.get("min_underwrite", 75)) and realization_score >= float(attack_cfg.get("min_realization", 70)):
+        return "ATTACK"
+    if (
+        underwrite_score >= float(ready_cfg.get("min_underwrite", 70))
+        and realization_score >= float(ready_cfg.get("min_realization", 40))
+        and realization_score <= float(ready_cfg.get("max_realization", 70))
+    ):
+        return "READY"
+    if underwrite_score >= float(cold_cfg.get("min_underwrite", 75)) and realization_score <= float(cold_cfg.get("max_realization", 39.999)):
+        return "COLD_STORAGE"
+    return "REJECT"
+
+
+def _legacy_scorecard_alias(
+    *,
+    context: dict[str, Any],
+    hard_vetos: list[str],
+) -> dict[str, Any]:
+    type_clarity_score = _type_clarity_score(context["opportunity_context"])
+    business_quality_score = _business_quality_score(context)
+    survival_score = _survival_score(context)
+    management_score = float(context["management"]["score"])
+    regime_cycle_score = _regime_cycle_score(context)
+    valuation_score, _ = _valuation_score(
+        context["opportunity_context"].get("primary_type", "unknown"),
+        context["pb"],
+        context["current_vs_high"],
+    )
+    catalyst_score = float(context["catalyst"]["score"])
+    market_structure_score = _market_structure_score(context)
+    total_score = round(
+        type_clarity_score
+        + business_quality_score
+        + survival_score
+        + management_score
+        + regime_cycle_score
+        + valuation_score
+        + catalyst_score
+        + market_structure_score,
+        2,
+    )
+    verdict = pick_score_verdict(total_score)
+    if hard_vetos:
+        verdict = {"label": "reject / no action", "action": "hard veto triggered"}
+    legacy_label = {
+        "high conviction / attack candidate": "high conviction / strong candidate",
+        "strong candidate / ready": "reasonable candidate / starter possible",
+        "cold-storage / watchlist": "watch / needs work",
+    }.get(verdict["label"], verdict["label"])
+    return {
+        "type_clarity": round(type_clarity_score, 2),
+        "business_quality": round(business_quality_score, 2),
+        "survival": round(survival_score, 2),
+        "management": round(management_score, 2),
+        "regime_cycle": round(regime_cycle_score, 2),
+        "valuation": round(valuation_score, 2),
+        "catalyst": round(catalyst_score, 2),
+        "market_structure": round(market_structure_score, 2),
+        "total": total_score,
+        "verdict": legacy_label,
+        "action": verdict["action"],
+    }
+
+
 def evaluate_partial_gate_dimensions(
     stock_code: str,
     scan_data: dict[str, Any],
@@ -671,6 +541,7 @@ def evaluate_universal_gates(
     *,
     opportunity_context: dict[str, Any] | None = None,
     extra_texts: list[str] | None = None,
+    prior_state: str | None = None,
 ) -> dict[str, Any]:
     context = _resolve_gate_context(
         stock_code,
@@ -689,139 +560,99 @@ def evaluate_universal_gates(
     if context["management"]["score"] <= 2 and context["management"]["red_flags"]:
         hard_vetos.append("management credibility is materially impaired")
 
-    valuation_result = build_three_case_valuation(stock_code, scan_data, context["opportunity_context"])
-    floor_protection, normalized_upside, recognition_upside = _proxy_floor_metrics(context, valuation_result.get("summary", {}))
-    flow_setup = score_flow_setup(_infer_flow_inputs(context))
-    repair_state = _infer_repair_state(context)
-    position_state = classify_position_state(
-        floor_protection=floor_protection,
-        normalized_upside=normalized_upside,
-        recognition_upside=recognition_upside,
-        repair_state=repair_state,
-        flow_stage=flow_setup.get("stage", "latent"),
-    )
+    driver_stack = build_driver_stack(stock_code, scan_data, extra_texts=extra_texts)
+    merged_opportunity = _merge_opportunity_context(context["opportunity_context"], driver_stack)
+    context["opportunity_context"] = merged_opportunity
 
-    type_clarity_score = _type_clarity_score(context["opportunity_context"])
-    business_quality_score = _business_quality_score(context)
-    survival_score = _survival_score(context)
-    management_score = float(context["management"]["score"])
-    regime_cycle_score = _regime_cycle_score(context)
-    valuation_score, valuation_reason = _valuation_score(
-        context["opportunity_context"].get("primary_type", "unknown"),
-        context["pb"],
-        context["current_vs_high"],
-    )
-    catalyst_score = float(context["catalyst"]["score"])
-    market_structure_score = _market_structure_score(context)
+    underwrite_axis = score_underwrite_axis(scan_data, driver_stack)
+    initial_realization_axis = score_realization_axis(scan_data, driver_stack)
+    driver_stack.setdefault("modifiers", {})["flow_stage"] = initial_realization_axis.get("flow_stage", "latent")
+    realization_axis = score_realization_axis(scan_data, driver_stack)
+    flow_stage = normalize_text(realization_axis.get("flow_stage") or driver_stack.get("modifiers", {}).get("flow_stage") or "latent").lower()
+    driver_stack["modifiers"]["flow_stage"] = flow_stage
 
-    intrinsic_value_floor_score = _score_intrinsic_value_floor(
-        floor_protection,
-        normalized_upside,
-        recognition_upside,
+    valuation_result = build_three_case_valuation(stock_code, scan_data, driver_stack)
+    valuation_summary = valuation_result.get("summary", {}) or {}
+    proposed_state = _classify_vcrf_state(
+        underwrite_axis.get("score", 0.0),
+        realization_axis.get("score", 0.0),
+        flow_stage=flow_stage,
+        valuation_summary=valuation_summary,
     )
-    governance_score = _score_governance(context)
-    business_or_asset_quality_score = _score_business_or_asset_quality(business_quality_score)
-    flow_realization_score = _score_flow_realization(context, flow_setup, position_state)
-
-    legacy_total = round(
-        type_clarity_score
-        + business_quality_score
-        + survival_score
-        + management_score
-        + regime_cycle_score
-        + valuation_score
-        + catalyst_score
-        + market_structure_score,
-        2,
+    component_availability = {
+        name: component.get("availability", "missing")
+        for name, component in (underwrite_axis.get("components", {}) or {}).items()
+    }
+    capped_state = _apply_degradation_caps(proposed_state, component_availability)
+    prev_state = str(prior_state or "NEW").upper()
+    enforced_state, transition_allowed, transition_reason = enforce_transition(
+        prev_state,
+        capped_state,
+        cfg=load_vcrf_state_machine(),
     )
-    template = _load_weight_template(context["opportunity_context"].get("primary_type", ""))
-    weighted_components = {
-        "intrinsic_value_floor": round(
-            intrinsic_value_floor_score / max(VCRF_DIMENSION_MAX["intrinsic_value_floor"], 1.0) * template.get("intrinsic_value_floor", 0.0),
-            2,
-        ),
-        "survival_boundary": round(
-            survival_score / max(VCRF_DIMENSION_MAX["survival_boundary"], 1.0) * template.get("survival_boundary", 0.0),
-            2,
-        ),
-        "governance_anti_fraud": round(
-            governance_score / max(VCRF_DIMENSION_MAX["governance_anti_fraud"], 1.0) * template.get("governance_anti_fraud", 0.0),
-            2,
-        ),
-        "business_or_asset_quality": round(
-            business_or_asset_quality_score / max(VCRF_DIMENSION_MAX["business_or_asset_quality"], 1.0) * template.get("business_or_asset_quality", 0.0),
-            2,
-        ),
-        "regime_cycle_position": round(
-            regime_cycle_score / max(VCRF_DIMENSION_MAX["regime_cycle_position"], 1.0) * template.get("regime_cycle_position", 0.0),
-            2,
-        ),
-        "turnaround_catalyst": round(
-            catalyst_score / max(VCRF_DIMENSION_MAX["turnaround_catalyst"], 1.0) * template.get("turnaround_catalyst", 0.0),
-            2,
-        ),
-        "flow_realization_and_elasticity": round(
-            flow_realization_score / max(VCRF_DIMENSION_MAX["flow_realization_and_elasticity"], 1.0) * template.get("flow_realization_and_elasticity", 0.0),
-            2,
-        ),
-    }
-    total_score = round(type_clarity_score + sum(weighted_components.values()), 2)
-    reported_total = round(max(total_score, legacy_total), 2)
-    verdict = pick_score_verdict(total_score)
-    if hard_vetos:
-        verdict = {"label": "reject / no action", "action": "hard veto triggered"}
+    position_state = normalize_text(enforced_state).lower()
 
-    business_or_asset_truth = {
-            "status": _status_from_score(business_quality_score, 14.0, 9.0),
-            "reason": f"top segment={context['purity'].get('top_segment') or 'N/A'}, moat={context['moat']['reason']}",
-    }
-    survival_truth = {
-            "status": _status_from_score(survival_score, 11.0, 7.0),
-            "reason": f"net profit={context['latest_income'].get('net_profit')}, equity={context['latest_balance'].get('total_equity')}",
-    }
-    governance_truth = {
-            "status": _status_from_score(governance_score, 7.0, 4.0),
-            "reason": f"management={context['management']['verdict']}, red_flags={', '.join(context['management'].get('red_flags', [])) or 'none surfaced'}",
-    }
-    regime_cycle_truth = {
-            "status": _status_from_score(regime_cycle_score, 10.0, 6.0),
-            "reason": context["bottom_pattern"]["reason"],
-    }
-    valuation_floor_truth = {
-            "status": _status_for_value_floor(intrinsic_value_floor_score),
-            "reason": (
-                f"floor_protection={floor_protection}, normalized_upside={normalized_upside}, "
-                f"recognition_upside={recognition_upside}"
-            ),
-    }
-    realization_truth = {
-            "status": _status_for_realization(flow_realization_score),
-            "reason": (
-                f"flow_stage={flow_setup.get('stage')}, position_state={position_state}, "
-                f"flow_reason={flow_setup.get('reason')}"
-            ),
-    }
+    legacy_scorecard = _legacy_scorecard_alias(context=context, hard_vetos=hard_vetos)
     gates = {
-        "business_or_asset_truth": business_or_asset_truth,
-        "survival_truth": survival_truth,
-        "governance_truth": governance_truth,
-        "regime_cycle_truth": regime_cycle_truth,
-        "valuation_floor_truth": valuation_floor_truth,
-        "realization_truth": realization_truth,
-        "business_truth": business_or_asset_truth,
-        "quality_truth": governance_truth,
-        "valuation_truth": valuation_floor_truth,
-        "catalyst_truth": realization_truth,
+        "business_or_asset_truth": _component_gate(
+            underwrite_axis["components"]["business_or_asset_quality"],
+            passing=70.0,
+            caution=50.0,
+        ),
+        "governance_truth": _component_gate(
+            underwrite_axis["components"]["governance_anti_fraud"],
+            passing=75.0,
+            caution=50.0,
+        ),
+        "valuation_floor_truth": _component_gate(
+            underwrite_axis["components"]["intrinsic_value_floor"],
+            passing=65.0,
+            caution=45.0,
+        ),
+        "survival_truth": _component_gate(
+            underwrite_axis["components"]["survival_boundary"],
+            passing=60.0,
+            caution=40.0,
+        ),
+        "realization_truth": {
+            "status": _status_from_score(realization_axis.get("score", 0.0), 70.0, 40.0),
+            "reason": f"flow_stage={flow_stage}; {realization_axis['components']['flow_confirmation'].get('reason', '')}",
+            "score": round(realization_axis.get("score", 0.0), 2),
+            "availability": realization_axis.get("confidence", "unknown"),
+            "confidence": realization_axis.get("confidence", "unknown"),
+        },
+        "regime_cycle_truth": _component_gate(
+            realization_axis["components"]["regime_cycle_position"],
+            passing=70.0,
+            caution=45.0,
+        ),
+        "catalyst_truth": _component_gate(
+            realization_axis["components"]["catalyst_quality"],
+            passing=65.0,
+            caution=45.0,
+        ),
     }
+    gates["business_truth"] = dict(gates["business_or_asset_truth"])
+    gates["quality_truth"] = dict(gates["governance_truth"])
+    gates["valuation_truth"] = dict(gates["valuation_floor_truth"])
 
     return {
         "stock_code": stock_code,
-        "opportunity_context": context["opportunity_context"],
+        "opportunity_context": merged_opportunity,
+        "driver_stack": driver_stack,
+        "underwrite_axis": underwrite_axis,
+        "realization_axis": realization_axis,
         "ownership": context["ownership"],
         "hard_vetos": hard_vetos,
-        "repair_state": repair_state,
-        "flow_stage": flow_setup.get("stage", "latent"),
         "position_state": position_state,
+        "prev_state": prev_state,
+        "transition_allowed": transition_allowed,
+        "transition_reason": transition_reason,
+        "flow_stage": flow_stage,
+        "floor_protection": valuation_summary.get("floor_protection"),
+        "normalized_upside": valuation_summary.get("normalized_upside"),
+        "recognition_upside": valuation_summary.get("recognition_upside"),
+        "wind_dependency": valuation_summary.get("wind_dependency"),
         "gates": gates,
         "signals": {
             "purity": context["purity"],
@@ -829,40 +660,7 @@ def evaluate_universal_gates(
             "management": context["management"],
             "catalyst": context["catalyst"],
             "bottom_pattern": context["bottom_pattern"],
-            "flow": flow_setup,
-            "valuation_summary": {
-                **(valuation_result.get("summary", {}) or {}),
-                "floor_protection": floor_protection,
-                "normalized_upside": normalized_upside,
-                "recognition_upside": recognition_upside,
-            },
+            "flow_confirmation": realization_axis["components"]["flow_confirmation"],
         },
-        "scorecard": {
-            "type_clarity": round(type_clarity_score, 2),
-            "business_quality": round(business_quality_score, 2),
-            "survival": round(survival_score, 2),
-            "management": round(management_score, 2),
-            "regime_cycle": round(regime_cycle_score, 2),
-            "valuation": round(valuation_score, 2),
-            "catalyst": round(catalyst_score, 2),
-            "market_structure": round(market_structure_score, 2),
-            "total": reported_total,
-            "legacy_total": legacy_total,
-            "verdict": _legacy_verdict_from_total(reported_total, hard_vetos),
-            "action": verdict["action"],
-            "vcrf_total": total_score,
-            "vcrf_verdict": verdict["label"],
-            "vcrf_dimensions": {
-                "thesis_clarity": round(type_clarity_score, 2),
-                "intrinsic_value_floor": round(intrinsic_value_floor_score, 2),
-                "survival_boundary": round(survival_score, 2),
-                "governance_anti_fraud": round(governance_score, 2),
-                "business_or_asset_quality": round(business_or_asset_quality_score, 2),
-                "regime_cycle_position": round(regime_cycle_score, 2),
-                "turnaround_catalyst": round(catalyst_score, 2),
-                "flow_realization_and_elasticity": round(flow_realization_score, 2),
-                "weighted": weighted_components,
-                "template": context["opportunity_context"].get("primary_type"),
-            },
-        },
+        "scorecard": legacy_scorecard,
     }

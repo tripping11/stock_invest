@@ -648,17 +648,47 @@ def get_balance_sheet(stock_code: str) -> dict[str, Any]:
         return {"data": [], "evidence": {}, "status": f"error: {exc}", "fetch_timestamp": now_iso()}
 
 
+def get_cashflow_statement(stock_code: str) -> dict[str, Any]:
+    try:
+        df = ak.stock_financial_report_sina(stock=_stock_symbol(stock_code), symbol="现金流量表")
+        records = _recent_records(df, 8)
+        evidence = _make_evidence(
+            "cashflow_statement",
+            f"{len(records)} periods",
+            f"akshare stock_financial_report_sina cashflow ({stock_code})",
+        )
+        return {"data": records, "evidence": evidence, "status": "ok", "fetch_timestamp": now_iso()}
+    except Exception as exc:
+        return {"data": [], "evidence": {}, "status": f"error: {exc}", "fetch_timestamp": now_iso()}
+
+
+def get_shareholder_count(stock_code: str) -> dict[str, Any]:
+    try:
+        df = ak.stock_zh_a_gdhs(symbol=stock_code)
+        records = _recent_records(df, 12)
+        evidence = _make_evidence(
+            "shareholder_count",
+            f"{len(records)} periods",
+            f"akshare stock_zh_a_gdhs ({stock_code})",
+        )
+        return {"data": records, "evidence": evidence, "status": "ok", "fetch_timestamp": now_iso()}
+    except Exception as exc:
+        return {"data": [], "evidence": {}, "status": f"error: {exc}", "fetch_timestamp": now_iso()}
+
+
 RADAR_PARTIAL_STEPS = {
     "company_profile": get_company_profile,
     "revenue_breakdown": get_revenue_breakdown,
     "valuation_history": get_valuation_history,
     "stock_kline": get_stock_kline,
     "realtime_quote": get_realtime_quote,
+    "shareholder_count": get_shareholder_count,
 }
 
 RADAR_EXPENSIVE_STEPS = {
     "income_statement": get_income_statement,
     "balance_sheet": get_balance_sheet,
+    "cashflow_statement": get_cashflow_statement,
 }
 
 RADAR_ALL_STEPS = {**RADAR_PARTIAL_STEPS, **RADAR_EXPENSIVE_STEPS}
@@ -670,8 +700,10 @@ FULL_SCAN_STEPS = [
     ("valuation_history", get_valuation_history),
     ("stock_kline", get_stock_kline),
     ("realtime_quote", get_realtime_quote),
+    ("shareholder_count", get_shareholder_count),
     ("income_statement", get_income_statement),
     ("balance_sheet", get_balance_sheet),
+    ("cashflow_statement", get_cashflow_statement),
 ]
 
 

@@ -198,6 +198,78 @@ def fetch_disclosure_announcements(
     }
 
 
+def fetch_vcrf_event_signals(
+    stock_code: str,
+    *,
+    start_date: str,
+    end_date: str,
+    market: str = "沪深京",
+) -> dict:
+    keyword_groups = {
+        "buyback": ["回购", "回购注销"],
+        "shareholder_support": ["增持", "兜底增持"],
+        "asset_unlock": ["资产注入", "分拆上市", "REIT", "出售资产"],
+        "restructuring": ["重大资产重组", "债务重组", "破产重整"],
+    }
+    events: list[dict] = []
+    errors: list[str] = []
+
+    for event_type, keywords in keyword_groups.items():
+        for keyword in keywords:
+            try:
+                response = fetch_disclosure_announcements(
+                    stock_code,
+                    market=market,
+                    start_date=start_date,
+                    end_date=end_date,
+                    keyword=keyword,
+                )
+            except Exception as exc:
+                errors.append(f"{event_type}:{keyword}:{exc}")
+                continue
+
+            if response.get("status") != "ok":
+                errors.append(f"{event_type}:{keyword}:{response.get('status')}")
+                continue
+
+            for item in response.get("announcements", []):
+                events.append(
+                    {
+                        "event_type": event_type,
+                        "keyword": keyword,
+                        "title": item.get("title", ""),
+                        "announcement_time": item.get("announcement_time", ""),
+                        "detail_url": item.get("detail_url", ""),
+                        "pdf_url": item.get("pdf_url", ""),
+                    }
+                )
+
+    deduped: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in sorted(events, key=lambda value: (value.get("announcement_time", ""), value.get("title", "")), reverse=True):
+        key = (item.get("event_type", ""), item.get("title", ""), item.get("announcement_time", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+
+    status = "ok"
+    if errors and deduped:
+        status = "partial"
+    elif errors and not deduped:
+        status = "error"
+
+    return {
+        "stock_code": str(stock_code).zfill(6),
+        "market": market,
+        "start_date": start_date,
+        "end_date": end_date,
+        "events": deduped,
+        "errors": errors,
+        "status": status,
+    }
+
+
 def generate_tier0_checklist(stock_code: str, company_name: str) -> dict:
     """Generate the list of fields that must be checked against Tier 0 evidence."""
     checklist = [

@@ -1336,5 +1336,291 @@ class VCRFGateAndRadarTests(unittest.TestCase):
         self.assertNotEqual(codes, top_6_by_cap, "Universe should not be pure top-cap slice")
 
 
+class VCRFUniversalGateTests(unittest.TestCase):
+    def _scan_data(self, *, equity=1_000_000_000, profit=120_000_000, industry="煤炭") -> dict:
+        return {
+            "company_profile": {"data": {"行业": industry, "主营业务": f"{industry}主业", "实际控制人": "国务院国资委", "股票简称": "测试股份"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": industry, "主营收入": 85, "收入比例": 85}]},
+            "valuation_history": {"data": {"pb": 0.95, "pb_percentile": 18}},
+            "stock_kline": {
+                "data": {
+                    "current_vs_5yr_high": 42,
+                    "latest_close": 10.0,
+                    "volume_ratio_20_vs_120": 1.4,
+                    "drawdown_from_5yr_high_pct": 50,
+                    "low_5y": 8.0,
+                    "avg_turnover_1y": 500_000_000,
+                }
+            },
+            "realtime_quote": {"data": {"最新价": 10.0, "总市值": 8_000_000_000}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": profit}]},
+            "balance_sheet": {
+                "data": [
+                    {
+                        "报告期": "20241231",
+                        "归属于母公司所有者权益合计": equity,
+                        "资产总计": 2_000_000_000,
+                        "货币资金": 600_000_000,
+                        "短期借款": 150_000_000,
+                    }
+                ]
+            },
+            "cashflow_statement": {"data": [{"报告期": "20241231", "经营活动产生的现金流量净额": 260_000_000}]},
+            "shareholder_count": {"data": [{"股东户数": 120_000}, {"股东户数": 135_000}]},
+            "event_signals": {"buyback": True},
+        }
+
+    def test_universal_gate_returns_driver_stack_and_dual_axes(self) -> None:
+        gate = evaluate_universal_gates("600348", self._scan_data())
+        self.assertIn("driver_stack", gate)
+        self.assertIn("underwrite_axis", gate)
+        self.assertIn("realization_axis", gate)
+
+    def test_universal_gate_keeps_legacy_scorecard_aliases_during_transition(self) -> None:
+        gate = evaluate_universal_gates("600348", self._scan_data())
+        self.assertIn("scorecard", gate)
+        self.assertIn("business_truth", gate["gates"])
+
+    def test_harvest_to_attack_is_downgraded(self) -> None:
+        aggressive_scan_data = self._scan_data(profit=240_000_000)
+        gate = evaluate_universal_gates("600348", aggressive_scan_data, prior_state="HARVEST")
+        self.assertNotEqual(gate["position_state"], "attack")
+
+
+class VCRFRadarIntegrationTests(unittest.TestCase):
+    def test_radar_coarse_stage_limits_fine_stage_candidate_count(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        with patch.object(radar_scan_engine, "_load_universe", return_value=[{"code": "600348", "name": "测试股份"}]):
+            with patch.object(
+                radar_scan_engine,
+                "_coarse_filter_universe",
+                return_value=[{"code": "600348", "name": "测试股份"}],
+                create=True,
+            ):
+                with patch.object(
+                    radar_scan_engine,
+                    "_scan_one_stock",
+                    return_value={
+                        "kind": "ranked",
+                        "order_index": 0,
+                        "payload": {
+                            "ticker": "600348",
+                            "company_name": "测试股份",
+                            "opportunity_type": "Cyclical",
+                            "score": 78.0,
+                            "hard_veto": False,
+                            "position_state": "ready",
+                            "thesis": "Test thesis",
+                            "mispricing": "base case 12 vs current 10",
+                            "catalysts": [],
+                            "risks": [],
+                            "why_passed": "Test reason",
+                            "next_step": "deep dive now",
+                            "reason": "N/A",
+                        },
+                    },
+                    create=True,
+                ):
+                    with patch.object(radar_scan_engine, "generate_market_scan_report", return_value={"report_path": "report.md"}, create=True):
+                        result = radar_scan_engine.run_radar_scan("A-share", limit=24)
+        self.assertIn("coarse_candidate_count", result)
+        self.assertLessEqual(result["fine_candidate_count"], result["coarse_candidate_count"])
+
+    def test_vcrf_calibrator_reports_axis_quantiles(self) -> None:
+        from engines.vcrf_calibrator import summarize_axis_distribution
+
+        report = summarize_axis_distribution([10, 20, 30, 40, 50])
+        self.assertIn("p50", report)
+        self.assertIn("histogram", report)
+
+
+class VCRFEndToEndSmokeTests(unittest.TestCase):
+    def test_synthetic_candidate_flows_through_driver_stack_gate_and_valuation_contract(self) -> None:
+        synthetic_scan_data = {
+            "company_profile": {"data": {"行业": "煤炭", "主营业务": "煤炭开采与销售", "实际控制人": "国务院国资委", "股票简称": "合成样本"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": "煤炭", "主营收入": 88, "收入比例": 88}]},
+            "valuation_history": {"data": {"pb": 0.82, "pb_percentile": 15}},
+            "stock_kline": {
+                "data": {
+                    "current_vs_5yr_high": 46,
+                    "latest_close": 9.5,
+                    "volume_ratio_20_vs_120": 1.5,
+                    "drawdown_from_5yr_high_pct": 48,
+                    "low_5y": 7.8,
+                    "avg_turnover_1y": 620_000_000,
+                }
+            },
+            "realtime_quote": {"data": {"最新价": 9.5, "总市值": 12_000_000_000}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 180_000_000}]},
+            "balance_sheet": {
+                "data": [
+                    {
+                        "报告期": "20241231",
+                        "归属于母公司所有者权益合计": 2_100_000_000,
+                        "资产总计": 4_500_000_000,
+                        "货币资金": 900_000_000,
+                        "短期借款": 200_000_000,
+                    }
+                ]
+            },
+            "cashflow_statement": {"data": [{"报告期": "20241231", "经营活动产生的现金流量净额": 320_000_000}]},
+            "shareholder_count": {"data": [{"股东户数": 110_000}, {"股东户数": 125_000}]},
+            "event_signals": {"buyback": True},
+        }
+
+        result = evaluate_universal_gates("600348", synthetic_scan_data, prior_state="NEW")
+        valuation = build_three_case_valuation("600348", synthetic_scan_data, result["driver_stack"])
+
+        self.assertIn("driver_stack", result)
+        self.assertIn("underwrite_axis", result)
+        self.assertIn("realization_axis", result)
+        self.assertIn("position_state", result)
+        self.assertIn("floor_case", valuation)
+        self.assertIn("normalized_case", valuation)
+        self.assertIn("recognition_case", valuation)
+
+
+class VCRFConfigContractTests(unittest.TestCase):
+    def test_loaders_expose_vcrf_config_files(self) -> None:
+        from utils.config_loader import (
+            load_vcrf_degradation,
+            load_vcrf_state_machine,
+            load_vcrf_weights,
+        )
+
+        self.assertIn("base_templates", load_vcrf_weights())
+        self.assertIn("allowed_transitions", load_vcrf_state_machine())
+        self.assertIn("degradation_rules", load_vcrf_degradation())
+
+    def test_all_weight_templates_normalize_after_sector_overrides(self) -> None:
+        from utils.config_loader import resolve_vcrf_weight_template
+
+        primary_types = ["compounder", "cyclical", "turnaround", "asset_play", "special_situation"]
+        routes = ["core_resource", "rigid_shovel", "core_military", "financial_asset", "consumer", "tech", "unknown"]
+        for primary_type in primary_types:
+            for route in routes:
+                template = resolve_vcrf_weight_template(primary_type, route)
+                self.assertAlmostEqual(sum(template["underwrite"].values()), 1.0, places=3)
+                self.assertAlmostEqual(sum(template["realization"].values()), 1.0, places=3)
+
+    def test_state_machine_config_includes_new_state_and_harvest_candidate_rules(self) -> None:
+        from utils.config_loader import load_vcrf_state_machine
+
+        cfg = load_vcrf_state_machine()
+        self.assertIn("NEW", cfg["allowed_transitions"])
+        self.assertIn("harvest_candidate", cfg)
+        self.assertEqual(cfg["harvest_candidate"]["consecutive_closes_above_recognition"], 3)
+
+
+class VCRFDataSourceTests(unittest.TestCase):
+    def test_akshare_adapter_exposes_cashflow_statement_step(self) -> None:
+        from adapters.akshare_adapter import RADAR_ALL_STEPS
+
+        self.assertIn("cashflow_statement", RADAR_ALL_STEPS)
+
+    def test_akshare_adapter_exposes_shareholder_count_step(self) -> None:
+        from adapters.akshare_adapter import RADAR_PARTIAL_STEPS
+
+        self.assertIn("shareholder_count", RADAR_PARTIAL_STEPS)
+
+    def test_cninfo_adapter_exposes_vcrf_event_query(self) -> None:
+        from adapters.cninfo_adapter import fetch_vcrf_event_signals
+
+        result = fetch_vcrf_event_signals("600348", start_date="20240101", end_date="20241231")
+        self.assertIn("events", result)
+
+
+class VCRFStateHistoryTests(unittest.TestCase):
+    def test_missing_history_resolves_to_new_state(self) -> None:
+        from engines.state_transition_tracker import load_latest_state
+
+        self.assertEqual(load_latest_state("600348", history_path="missing.jsonl"), "NEW")
+
+    def test_forbidden_transition_is_downgraded(self) -> None:
+        from engines.state_transition_tracker import enforce_transition
+        from utils.config_loader import load_vcrf_state_machine
+
+        state, allowed, reason = enforce_transition("HARVEST", "ATTACK", cfg=load_vcrf_state_machine())
+        self.assertEqual(state, "COLD_STORAGE")
+        self.assertFalse(allowed)
+        self.assertTrue(reason)
+
+
+class VCRFDriverStackTests(unittest.TestCase):
+    def test_sector_route_resolves_from_active_sector_classification(self) -> None:
+        from utils.primary_type_router import resolve_sector_route
+
+        route = resolve_sector_route(
+            "600348",
+            {"行业": "煤炭", "主营业务": "煤炭开采与销售"},
+            revenue_records=[{"主营构成": "煤炭", "主营收入": 85}],
+        )
+        self.assertEqual(route["sector_route"], "core_resource")
+
+    def test_turnaround_routing_wins_when_losses_and_repair_evidence_exist(self) -> None:
+        from utils.primary_type_router import determine_primary_type
+
+        primary_type, confidence = determine_primary_type(
+            sector_route="core_resource",
+            preliminary_cycle_state="repair",
+            financials_3y={"losses_2y": True, "repair_evidence": True},
+            tags=[],
+            events={},
+            big_bath_result={"verdict": "inconclusive"},
+        )
+        self.assertEqual(primary_type, "turnaround")
+        self.assertGreaterEqual(confidence, 0.75)
+
+    def test_missing_survival_boundary_caps_state_at_cold_storage(self) -> None:
+        from validators.universal_gate import _apply_degradation_caps
+
+        adjusted = _apply_degradation_caps(
+            proposed_state="ATTACK",
+            component_availability={"survival_boundary": "missing"},
+        )
+        self.assertEqual(adjusted, "COLD_STORAGE")
+
+
+class VCRFRealizationEngineTests(unittest.TestCase):
+    def test_realization_axis_returns_all_six_components(self) -> None:
+        from engines.flow_realization_engine import score_realization_axis
+
+        result = score_realization_axis(scan_data={}, driver_stack={})
+        self.assertEqual(
+            set(result["components"].keys()),
+            {
+                "repair_state",
+                "regime_cycle_position",
+                "marginal_buyer_probability",
+                "flow_confirmation",
+                "elasticity",
+                "catalyst_quality",
+            },
+        )
+
+    def test_attack_book_monitor_requires_price_and_flow_confirmation(self) -> None:
+        from engines.attack_book_monitor import evaluate_harvest_candidate
+
+        result = evaluate_harvest_candidate(
+            closes=[10.1, 10.2, 10.3],
+            recognition_price=10.0,
+            daily_returns=[0.01, 0.01, 0.01],
+            flow_stage="trend",
+            cfg={"consecutive_closes_above_recognition": 3, "require_flow_stage_deterioration_to": "crowded"},
+        )
+        self.assertFalse(result["harvest_candidate"])
+
+
+class VCRFValuationRouteTests(unittest.TestCase):
+    def test_normalized_case_depends_on_sector_route_not_primary_type_only(self) -> None:
+        scan_data = VCRFValuationContractTests()._cyclical_scan_data()
+        valuation = build_three_case_valuation(
+            "600348",
+            scan_data,
+            {"sector_route": "core_resource", "primary_type": "cyclical"},
+        )
+        self.assertEqual(valuation["route_anchor"], "core_resource_mid_cycle")
+
+
 if __name__ == "__main__":
     unittest.main()

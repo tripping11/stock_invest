@@ -1,16 +1,17 @@
-"""Scenario valuation helpers for the whole-market framework."""
+"""Route-aware three-case valuation helpers for VCRF."""
 from __future__ import annotations
 
 from typing import Any
 
-from utils.config_loader import load_valuation_discipline
-from utils.financial_snapshot import (
+from utils.framework_utils import (
     extract_latest_price,
     extract_market_cap,
     get_latest_balance_snapshot,
     get_latest_income_snapshot,
+    load_valuation_discipline,
+    normalize_text,
+    safe_float,
 )
-from utils.value_utils import normalize_text, safe_float
 
 
 def _implied_price(equity_value: float | None, share_count: float | None) -> float | None:
@@ -20,86 +21,114 @@ def _implied_price(equity_value: float | None, share_count: float | None) -> flo
 
 
 def _case_payload(method: str, assumptions: list[str], equity_value: float | None, share_count: float | None) -> dict[str, Any]:
-    implied_price = _implied_price(equity_value, share_count)
+    price = _implied_price(equity_value, share_count)
     return {
         "valuation_method": method,
         "assumptions": assumptions,
         "implied_equity_value": round(equity_value, 2) if equity_value is not None else None,
-        "implied_price": round(implied_price, 2) if implied_price is not None else None,
+        "implied_price": round(price, 2) if price is not None else None,
     }
 
 
-def _scaled_value(anchor: float | None, multiple: Any) -> float | None:
-    numeric_multiple = safe_float(multiple)
-    if anchor is None or numeric_multiple is None:
+def _empty_case(method: str, assumption: str) -> dict[str, Any]:
+    return _case_payload(method, [assumption], None, None)
+
+
+def _resolve_route_anchor(discipline: dict[str, Any], sector_route: str, primary_type: str) -> tuple[str, str]:
+    route_methods = discipline.get("route_methods", {}) or {}
+    route_key = sector_route or "unknown"
+    route_cfg = route_methods.get(route_key, {}) or {}
+    route_anchor = normalize_text(route_cfg.get("normalized_anchor")) or f"{primary_type or 'unknown'}_fallback"
+    return route_key, route_anchor
+
+
+def _share_count(market_cap: float | None, current_price: float | None) -> float | None:
+    if market_cap in (None, 0) or current_price in (None, 0):
         return None
-    return anchor * numeric_multiple
+    return market_cap / current_price
 
 
-def _product(*values: Any) -> float | None:
-    result = 1.0
-    for value in values:
-        numeric = safe_float(value)
-        if numeric is None:
-            return None
-        result *= numeric
-    return result
+def _build_floor_case(
+    sector_route: str,
+    equity: float | None,
+    profit: float | None,
+    share_count: float | None,
+) -> dict[str, Any]:
+    if sector_route == "financial_asset":
+        return _case_payload("stressed_nav", ["asset discount persists"], equity * 0.90 if equity is not None else None, share_count)
+    if sector_route == "core_resource":
+        return _case_payload("stressed_book", ["commodity stress persists"], equity * 0.85 if equity is not None else None, share_count)
+    if sector_route == "rigid_shovel":
+        return _case_payload("replacement_cost_proxy", ["capex remains soft"], equity * 0.80 if equity is not None else None, share_count)
+    if sector_route in {"consumer", "tech"}:
+        floor_value = profit * 8 if profit is not None else (equity * 0.75 if equity is not None else None)
+        return _case_payload("no_growth_owner_earnings", ["no-growth downside anchor"], floor_value, share_count)
+    floor_value = equity * 0.75 if equity is not None else (profit * 8 if profit is not None else None)
+    return _case_payload("conservative_book", ["book-value fallback"], floor_value, share_count)
 
 
-def _sum_known(*values: float | None) -> float | None:
-    known_values = [value for value in values if value is not None]
-    if not known_values:
-        return None
-    return float(sum(known_values))
+def _build_normalized_case(
+    sector_route: str,
+    route_anchor: str,
+    primary_type: str,
+    equity: float | None,
+    profit: float | None,
+    share_count: float | None,
+) -> dict[str, Any]:
+    if sector_route == "core_resource":
+        equity_value = profit * 9 if profit is not None else (equity * 1.00 if equity is not None else None)
+        return _case_payload(route_anchor, ["mid-cycle resource earnings"], equity_value, share_count)
+    if sector_route == "rigid_shovel":
+        equity_value = profit * 10 if profit is not None else (equity * 1.05 if equity is not None else None)
+        return _case_payload(route_anchor, ["mid-cycle capex demand"], equity_value, share_count)
+    if sector_route == "core_military":
+        equity_value = profit * 16 if profit is not None else (equity * 1.20 if equity is not None else None)
+        return _case_payload(route_anchor, ["program margins normalize"], equity_value, share_count)
+    if sector_route == "consumer":
+        equity_value = profit * 15 if profit is not None else (equity * 1.30 if equity is not None else None)
+        return _case_payload(route_anchor, ["owner earnings normalize"], equity_value, share_count)
+    if sector_route == "tech":
+        equity_value = profit * 18 if profit is not None else (equity * 1.40 if equity is not None else None)
+        return _case_payload(route_anchor, ["demand and mix normalize"], equity_value, share_count)
+    if sector_route == "financial_asset":
+        equity_value = equity * 1.10 if equity is not None else None
+        return _case_payload(route_anchor, ["mid-cycle ROE on current equity"], equity_value, share_count)
+    if primary_type == "asset_play":
+        equity_value = equity * 1.00 if equity is not None else None
+        return _case_payload(route_anchor, ["assets recognized near book"], equity_value, share_count)
+    equity_value = profit * 8 if profit is not None else (equity * 0.90 if equity is not None else None)
+    return _case_payload(route_anchor, ["conservative normalized earnings"], equity_value, share_count)
 
 
-def _historical_profit_anchor(records: list[dict[str, Any]]) -> float | None:
-    profits: list[float] = []
-    for row in records:
-        if not isinstance(row, dict):
-            continue
-        for key in (
-            "褰掑睘浜庢瘝鍏徃鎵€鏈夎€呯殑鍑€鍒╂鼎",
-            "褰掑睘浜庢瘝鍏徃鑲′笢鐨勫噣鍒╂鼎",
-            "net_profit",
-            "profit",
-        ):
-            numeric = safe_float(row.get(key))
-            if numeric is not None:
-                profits.append(numeric)
-                break
-    if not profits:
-        return None
-    return profits[-1]
+def _build_recognition_case(
+    sector_route: str,
+    normalized_equity_value: float | None,
+    profit: float | None,
+    share_count: float | None,
+) -> dict[str, Any]:
+    if sector_route == "core_resource":
+        equity_value = profit * 12 if profit is not None else (normalized_equity_value * 1.25 if normalized_equity_value is not None else None)
+        return _case_payload("peak_cycle_multiple", ["pricing and sentiment overshoot"], equity_value, share_count)
+    if sector_route == "rigid_shovel":
+        equity_value = profit * 13 if profit is not None else (normalized_equity_value * 1.25 if normalized_equity_value is not None else None)
+        return _case_payload("peak_capex_multiple", ["order boom and rerating"], equity_value, share_count)
+    if sector_route == "core_military":
+        equity_value = profit * 20 if profit is not None else (normalized_equity_value * 1.35 if normalized_equity_value is not None else None)
+        return _case_payload("recognition_multiple", ["program certainty premium"], equity_value, share_count)
+    if sector_route in {"consumer", "tech"}:
+        equity_value = normalized_equity_value * 1.35 if normalized_equity_value is not None else (profit * 20 if profit is not None else None)
+        return _case_payload("recognition_multiple", ["quality rerating and momentum"], equity_value, share_count)
+    if sector_route == "financial_asset":
+        equity_value = normalized_equity_value * 1.20 if normalized_equity_value is not None else None
+        return _case_payload("recognition_multiple", ["discount closes"], equity_value, share_count)
+    equity_value = normalized_equity_value * 1.25 if normalized_equity_value is not None else None
+    return _case_payload("recognition_multiple", ["sentiment-driven upside"], equity_value, share_count)
 
 
-def _resolve_case_multiple(type_cfg: dict[str, Any], case_key: str, legacy_key: str | None = None) -> float | None:
-    case_multiples = type_cfg.get("case_multiples", {}) or {}
-    multiples = type_cfg.get("multiples", {}) or {}
-    if case_key in case_multiples:
-        return safe_float(case_multiples.get(case_key))
-    if case_key in multiples:
-        return safe_float(multiples.get(case_key))
-    if legacy_key:
-        return safe_float(multiples.get(legacy_key))
-    return None
-
-
-def _resolve_book_multiple(type_cfg: dict[str, Any], case_key: str, legacy_key: str | None = None) -> float | None:
-    for bucket_name in ("book_multiples", "balance_sheet_haircuts", "recovery_multiples", "outcome_multiples"):
-        bucket = type_cfg.get(bucket_name, {}) or {}
-        if case_key in bucket:
-            return safe_float(bucket.get(case_key))
-        if legacy_key and legacy_key in bucket:
-            return safe_float(bucket.get(legacy_key))
-    return None
-
-
-def _case_price_ratio(case_payload: dict[str, Any], current_price: float | None) -> float | None:
-    implied_price = safe_float(case_payload.get("implied_price"))
+def _upside(implied_price: float | None, current_price: float | None) -> float | None:
     if implied_price in (None, 0) or current_price in (None, 0):
         return None
-    return implied_price / current_price
+    return implied_price / current_price - 1
 
 
 def build_three_case_valuation(
@@ -111,94 +140,136 @@ def build_three_case_valuation(
     quote = scan_data.get("realtime_quote", {}).get("data", {})
     kline = scan_data.get("stock_kline", {}).get("data", {})
     primary_type = normalize_text(opportunity_context.get("primary_type")).lower()
-    type_cfg = (discipline.get("opportunity_types", {}) or {}).get(primary_type, {}) or {}
-
+    sector_route = normalize_text(opportunity_context.get("sector_route")).lower()
     market_cap = extract_market_cap(quote)
     current_price = extract_latest_price(quote, kline)
-    share_count = market_cap / current_price if market_cap not in (None, 0) and current_price not in (None, 0) else None
-    income_records = scan_data.get("income_statement", {}).get("data", [])
-    latest_income = get_latest_income_snapshot(income_records)
+    share_count = _share_count(market_cap, current_price)
+    latest_income = get_latest_income_snapshot(scan_data.get("income_statement", {}).get("data", []))
     latest_balance = get_latest_balance_snapshot(scan_data.get("balance_sheet", {}).get("data", []))
     profit = latest_income.get("net_profit")
     equity = latest_balance.get("total_equity")
-    normalized_profit = _historical_profit_anchor(income_records) or profit
+    route_methods = discipline.get("route_methods", {}) or {}
 
-    if primary_type == "compounder":
-        floor_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "floor", "bear"))
-        normalized_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "normalized", "base"))
-        recognition_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "recognition", "bull"))
-        floor = _case_payload("owner_earnings_no_growth", ["no-growth owner earnings"], floor_value, share_count)
-        normalized = _case_payload("owner_earnings_fair_multiple", ["quality is maintained"], normalized_value, share_count)
-        recognition = _case_payload("premium_quality_multiple", ["market pays for durable quality"], recognition_value, share_count)
-    elif primary_type == "cyclical":
-        floor_value = _scaled_value(equity, _resolve_case_multiple(type_cfg, "floor"))
-        normalized_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "normalized", "base"))
-        recognition_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "recognition", "bull"))
-        floor = _case_payload("tangible_book_or_replacement_cost", ["asset floor / replacement-cost style anchor"], floor_value, share_count)
-        normalized = _case_payload("mid_cycle_earnings", ["mid-cycle earnings power"], normalized_value, share_count)
-        recognition = _case_payload("rerated_mid_cycle_earnings", ["market recognizes normalized earnings"], recognition_value, share_count)
-    elif primary_type == "turnaround":
-        floor_value = _scaled_value(equity, _resolve_book_multiple(type_cfg, "floor", "bear"))
-        normalized_value = _sum_known(
-            _scaled_value(equity, _resolve_book_multiple(type_cfg, "base", "base")),
-            _scaled_value(max(profit or 0, 0), _resolve_book_multiple(type_cfg, "normalized", "base")),
-        )
-        recognition_value = _sum_known(
-            _scaled_value(equity, _resolve_book_multiple(type_cfg, "bull", "bull")),
-            _scaled_value(max(profit or 0, 0), _resolve_book_multiple(type_cfg, "recognition", "bull")),
-        )
-        floor = _case_payload("survival_value", ["survival floor if repair stalls"], floor_value, share_count)
-        normalized = _case_payload("repaired_earnings", ["repair path partially works"], normalized_value, share_count)
-        recognition = _case_payload("post_repair_rerating", ["market rerates after repair"], recognition_value, share_count)
-    elif primary_type == "asset_play":
-        floor_value = _scaled_value(equity, _resolve_book_multiple(type_cfg, "floor", "bear"))
-        normalized_value = _scaled_value(equity, _resolve_book_multiple(type_cfg, "normalized", "base"))
-        recognition_value = _scaled_value(equity, _resolve_book_multiple(type_cfg, "recognition", "bull"))
-        floor = _case_payload("stressed_nav", ["discount persists"], floor_value, share_count)
-        normalized = _case_payload("book_or_nav", ["assets are valued closer to book"], normalized_value, share_count)
-        recognition = _case_payload("discount_close", ["discount closes as realization path lands"], recognition_value, share_count)
-    else:
-        anchor = market_cap or equity
-        floor_value = _scaled_value(anchor, _resolve_book_multiple(type_cfg, "downside", "bear"))
-        normalized_value = _scaled_value(anchor, _resolve_book_multiple(type_cfg, "base", "base"))
-        recognition_value = _scaled_value(anchor, _resolve_book_multiple(type_cfg, "upside", "bull"))
-        floor = _case_payload("downside_case_weighted", ["downside scenario weighting"], floor_value, share_count)
-        normalized = _case_payload("base_case_weighted", ["base scenario weighting"], normalized_value, share_count)
-        recognition = _case_payload("upside_case_weighted", ["upside scenario weighting"], recognition_value, share_count)
+    if primary_type == "unknown":
+        floor_case = _empty_case("unavailable", "unknown opportunity type")
+        normalized_case = _empty_case("unavailable", "unknown opportunity type")
+        recognition_case = _empty_case("unavailable", "unknown opportunity type")
+        return {
+            "stock_code": stock_code,
+            "primary_type": primary_type,
+            "sector_route": sector_route or "unknown",
+            "route_anchor": "unavailable",
+            "current_price": current_price,
+            "market_cap": market_cap,
+            "share_count": share_count,
+            "floor_case": floor_case,
+            "normalized_case": normalized_case,
+            "recognition_case": recognition_case,
+            "summary": {
+                "floor_protection": None,
+                "normalized_upside": None,
+                "recognition_upside": None,
+                "wind_dependency": None,
+                "priced_state": "unknown",
+                "priced_in": "unknown",
+            },
+            "bear_case": floor_case,
+            "base_case": normalized_case,
+            "bull_case": recognition_case,
+        }
 
-    floor_protection = _case_price_ratio(floor, current_price)
-    normalized_ratio = _case_price_ratio(normalized, current_price)
-    recognition_ratio = _case_price_ratio(recognition, current_price)
-    normalized_equity_value = safe_float(normalized.get("implied_equity_value"))
-    recognition_equity_value = safe_float(recognition.get("implied_equity_value"))
+    if primary_type == "compounder" and sector_route in ("", "unknown") and profit is None:
+        floor_case = _empty_case("unavailable", "missing normalized earnings anchor")
+        normalized_case = _empty_case("unavailable", "missing normalized earnings anchor")
+        recognition_case = _empty_case("unavailable", "missing normalized earnings anchor")
+        return {
+            "stock_code": stock_code,
+            "primary_type": primary_type,
+            "sector_route": sector_route or "unknown",
+            "route_anchor": "compounder_missing_profit",
+            "current_price": current_price,
+            "market_cap": market_cap,
+            "share_count": share_count,
+            "floor_case": floor_case,
+            "normalized_case": normalized_case,
+            "recognition_case": recognition_case,
+            "summary": {
+                "floor_protection": None,
+                "normalized_upside": None,
+                "recognition_upside": None,
+                "wind_dependency": None,
+                "priced_state": "unknown",
+                "priced_in": "unknown",
+            },
+            "bear_case": floor_case,
+            "base_case": normalized_case,
+            "bull_case": recognition_case,
+        }
+
+    if not route_methods and sector_route in ("", "unknown") and primary_type == "cyclical":
+        floor_case = _empty_case("unavailable", "missing valuation discipline route methods")
+        normalized_case = _empty_case("unavailable", "missing valuation discipline route methods")
+        recognition_case = _empty_case("unavailable", "missing valuation discipline route methods")
+        return {
+            "stock_code": stock_code,
+            "primary_type": primary_type,
+            "sector_route": sector_route or "unknown",
+            "route_anchor": "missing_route_methods",
+            "current_price": current_price,
+            "market_cap": market_cap,
+            "share_count": share_count,
+            "floor_case": floor_case,
+            "normalized_case": normalized_case,
+            "recognition_case": recognition_case,
+            "summary": {
+                "floor_protection": None,
+                "normalized_upside": None,
+                "recognition_upside": None,
+                "wind_dependency": None,
+                "priced_state": "unknown",
+                "priced_in": "unknown",
+            },
+            "bear_case": floor_case,
+            "base_case": normalized_case,
+            "bull_case": recognition_case,
+        }
+
+    resolved_route, route_anchor = _resolve_route_anchor(discipline, sector_route, primary_type)
+    floor_case = _build_floor_case(resolved_route, equity, profit, share_count)
+    normalized_case = _build_normalized_case(resolved_route, route_anchor, primary_type, equity, profit, share_count)
+    recognition_case = _build_recognition_case(resolved_route, normalized_case.get("implied_equity_value"), profit, share_count)
+
+    floor_protection = None
+    if floor_case.get("implied_price") not in (None, 0) and current_price not in (None, 0):
+        floor_protection = floor_case["implied_price"] / current_price
+    normalized_upside = _upside(normalized_case.get("implied_price"), current_price)
+    recognition_upside = _upside(recognition_case.get("implied_price"), current_price)
     wind_dependency = None
-    if normalized_equity_value not in (None, 0) and recognition_equity_value is not None:
-        wind_dependency = round(recognition_equity_value / normalized_equity_value - 1, 4)
-
-    current_vs_normalized = None
-    if current_price not in (None, 0) and normalized.get("implied_price") not in (None, 0):
-        current_vs_normalized = current_price / normalized["implied_price"]
-
-    summary = {
-        "floor_protection": None if floor_protection is None else round(floor_protection, 4),
-        "normalized_upside": None if normalized_ratio is None else round(normalized_ratio - 1, 4),
-        "recognition_upside": None if recognition_ratio is None else round(recognition_ratio - 1, 4),
-        "wind_dependency": wind_dependency,
-        "margin_of_safety": None if current_vs_normalized is None else round(1 - current_vs_normalized, 4),
-        "priced_in": "optimistic" if current_vs_normalized is not None and current_vs_normalized > 1.0 else "conservative_to_fair",
-    }
+    if recognition_case.get("implied_price") not in (None, 0) and normalized_case.get("implied_price") is not None and current_price not in (None, 0):
+        denominator = recognition_case["implied_price"] - current_price
+        if denominator not in (None, 0):
+            wind_dependency = (recognition_case["implied_price"] - normalized_case["implied_price"]) / denominator
 
     return {
         "stock_code": stock_code,
         "primary_type": primary_type,
+        "sector_route": resolved_route,
+        "route_anchor": route_anchor,
         "current_price": current_price,
         "market_cap": market_cap,
         "share_count": share_count,
-        "floor_case": floor,
-        "normalized_case": normalized,
-        "recognition_case": recognition,
-        "bear_case": floor,
-        "base_case": normalized,
-        "bull_case": recognition,
-        "summary": summary,
+        "floor_case": floor_case,
+        "normalized_case": normalized_case,
+        "recognition_case": recognition_case,
+        "summary": {
+            "floor_protection": round(floor_protection, 4) if floor_protection is not None else None,
+            "normalized_upside": round(normalized_upside, 4) if normalized_upside is not None else None,
+            "recognition_upside": round(recognition_upside, 4) if recognition_upside is not None else None,
+            "wind_dependency": round(wind_dependency, 4) if wind_dependency is not None else None,
+            "priced_state": "optimistic" if normalized_upside is not None and normalized_upside < 0 else "conservative_to_fair",
+            "priced_in": "optimistic" if normalized_upside is not None and normalized_upside < 0 else "conservative_to_fair",
+        },
+        "bear_case": floor_case,
+        "base_case": normalized_case,
+        "bull_case": recognition_case,
     }

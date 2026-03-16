@@ -56,10 +56,10 @@ opportunity_types:
   turnaround:
     label: "Turnaround"
     keywords:
-      - "ST"
+      - ST
       - "*ST"
       - 扭亏
-      - 纾困
+      - 亏损
       - 困境反转
       - 债务重组
       - 降本增效
@@ -113,17 +113,153 @@ opportunity_types:
       - 监管批复
       - 交易对价
 
+sector_routes:
+  core_resource:
+    keywords:
+      - 煤炭
+      - 钢铁
+      - 有色
+      - 铜
+      - 铝
+      - 黄金
+      - 石油
+      - 石化
+      - 化工
+      - 纯碱
+      - 玻璃
+      - 水泥
+  rigid_shovel:
+    keywords:
+      - 工程机械
+      - 港口
+      - 航运
+      - 造船
+      - 公路
+      - 电力设备
+      - 设备制造
+  core_military:
+    keywords:
+      - 军工
+      - 航空发动机
+      - 导弹
+      - 舰船
+      - 航天
+      - 雷达
+  financial_asset:
+    keywords:
+      - 银行
+      - 券商
+      - 保险
+      - 地产
+      - 物业
+      - 园区
+      - REIT
+  consumer:
+    keywords:
+      - 白酒
+      - 食品饮料
+      - 家电
+      - 医疗服务
+      - 医药商业
+      - 连锁
+      - 品牌消费
+  tech:
+    keywords:
+      - 软件开发
+      - SaaS
+      - 云服务
+      - 半导体
+      - 芯片
+      - 人工智能
+      - 高端制造
+
+primary_type_hints:
+  turnaround:
+    keywords:
+      - ST
+      - "*ST"
+      - 亏损
+      - 扭亏
+      - 困境反转
+      - 债务重组
+      - 资产减值
+      - 摘帽
+  asset_play:
+    keywords:
+      - NAV
+      - SOTP
+      - REIT
+      - 资产注入
+      - 分拆上市
+      - 土地储备
+      - 隐含价值
+
+realization_path_keywords:
+  repricing:
+    - 提价
+    - 重估
+    - 景气回升
+  asset_unlock:
+    - 资产注入
+    - 分拆上市
+    - REIT
+    - 出售资产
+  mna:
+    - 并购
+    - 收购
+    - 吸收合并
+  buyback:
+    - 回购
+    - 回购注销
+  policy:
+    - 批复
+    - 政策支持
+    - 补贴
+    - 牌照
+  capital_return:
+    - 分红
+    - 特别分红
+  institutional_entry:
+    - 增持
+    - 战略投资者
+    - 举牌
+
+special_tag_rules:
+  st:
+    keywords:
+      - ST
+  star_st:
+    keywords:
+      - "*ST"
+  delisting_risk:
+    keywords:
+      - 退市风险
+      - 风险警示
+  reorg_candidate:
+    keywords:
+      - 重整
+      - 重组
+      - 资产注入
+  state_owned:
+    keywords:
+      - 国资
+      - 国有
+      - 国务院国资委
+
 company_overrides:
   "600328":
     name: "中盐化工"
     primary_type: "cyclical"
+    sector_route: "core_resource"
     secondary_types:
       - "asset_play"
   "600348":
     name: "华阳股份"
     primary_type: "cyclical"
+    sector_route: "core_resource"
   "600893":
     name: "航发动力"
     primary_type: "special_situation"
+    sector_route: "core_military"
     secondary_types:
       - "compounder"

@@ -1,0 +1,19 @@
+degradation_rules:
+  underwrite:
+    survival_boundary:
+      on_missing: cap_state_at_COLD_STORAGE
+      cap_state: COLD_STORAGE
+    governance_anti_fraud:
+      on_missing: use_neutral
+      fallback_score: 50
+      flag: confidence_degraded
+    normalized_earnings_power:
+      on_missing: use_conservative
+      fallback_score: 30
+  realization:
+    flow_confirmation:
+      on_missing: use_layer1_only
+      flag: partial_realization
+    catalyst_quality:
+      on_missing: use_neutral
+      fallback_score: 40

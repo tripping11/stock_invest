@@ -24,12 +24,14 @@ from utils.opportunity_classifier import (  # noqa: F401
     assess_business_purity,
     classify_state_ownership,
 )
+from utils.primary_type_router import build_driver_stack, determine_primary_type, resolve_sector_route  # noqa: F401
 from utils.value_utils import (  # noqa: F401
     _pick_revenue_col,
     normalize_text,
     safe_float,
     select_latest_record,
 )
+from utils.vcrf_probes import assess_survival_boundary, detect_big_bath, score_underwrite_axis  # noqa: F401
 
 
 CACHE_STALE_HOURS = 24
@@ -48,11 +50,14 @@ __all__ = [
     "assess_bottom_pattern",
     "assess_business_purity",
     "classify_state_ownership",
+    "detect_big_bath",
     "extract_latest_revenue_snapshot",
     "extract_latest_revenue_terms",
     "extract_market_cap",
     "get_latest_balance_snapshot",
     "get_latest_income_snapshot",
+    "build_driver_stack",
+    "determine_primary_type",
     "get_manifest_field_entry",
     "is_usable_status",
     "load_source_registry",
@@ -60,8 +65,11 @@ __all__ = [
     "manifest_field_status",
     "normalize_text",
     "now_ts",
+    "resolve_sector_route",
     "safe_float",
+    "score_underwrite_axis",
     "select_latest_record",
+    "assess_survival_boundary",
 ]
 
 
