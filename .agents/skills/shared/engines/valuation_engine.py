@@ -3,15 +3,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from utils.framework_utils import (
+from utils.config_loader import load_valuation_discipline
+from utils.financial_snapshot import (
     extract_latest_price,
     extract_market_cap,
     get_latest_balance_snapshot,
     get_latest_income_snapshot,
-    load_valuation_discipline,
-    normalize_text,
-    safe_float,
 )
+from utils.value_utils import normalize_text, safe_float
 
 
 def _implied_price(equity_value: float | None, share_count: float | None) -> float | None:
@@ -21,11 +20,12 @@ def _implied_price(equity_value: float | None, share_count: float | None) -> flo
 
 
 def _case_payload(method: str, assumptions: list[str], equity_value: float | None, share_count: float | None) -> dict[str, Any]:
+    implied_price = _implied_price(equity_value, share_count)
     return {
         "valuation_method": method,
         "assumptions": assumptions,
         "implied_equity_value": round(equity_value, 2) if equity_value is not None else None,
-        "implied_price": round(_implied_price(equity_value, share_count), 2) if _implied_price(equity_value, share_count) is not None else None,
+        "implied_price": round(implied_price, 2) if implied_price is not None else None,
     }
 
 
@@ -53,6 +53,55 @@ def _sum_known(*values: float | None) -> float | None:
     return float(sum(known_values))
 
 
+def _historical_profit_anchor(records: list[dict[str, Any]]) -> float | None:
+    profits: list[float] = []
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        for key in (
+            "褰掑睘浜庢瘝鍏徃鎵€鏈夎€呯殑鍑€鍒╂鼎",
+            "褰掑睘浜庢瘝鍏徃鑲′笢鐨勫噣鍒╂鼎",
+            "net_profit",
+            "profit",
+        ):
+            numeric = safe_float(row.get(key))
+            if numeric is not None:
+                profits.append(numeric)
+                break
+    if not profits:
+        return None
+    return profits[-1]
+
+
+def _resolve_case_multiple(type_cfg: dict[str, Any], case_key: str, legacy_key: str | None = None) -> float | None:
+    case_multiples = type_cfg.get("case_multiples", {}) or {}
+    multiples = type_cfg.get("multiples", {}) or {}
+    if case_key in case_multiples:
+        return safe_float(case_multiples.get(case_key))
+    if case_key in multiples:
+        return safe_float(multiples.get(case_key))
+    if legacy_key:
+        return safe_float(multiples.get(legacy_key))
+    return None
+
+
+def _resolve_book_multiple(type_cfg: dict[str, Any], case_key: str, legacy_key: str | None = None) -> float | None:
+    for bucket_name in ("book_multiples", "balance_sheet_haircuts", "recovery_multiples", "outcome_multiples"):
+        bucket = type_cfg.get(bucket_name, {}) or {}
+        if case_key in bucket:
+            return safe_float(bucket.get(case_key))
+        if legacy_key and legacy_key in bucket:
+            return safe_float(bucket.get(legacy_key))
+    return None
+
+
+def _case_price_ratio(case_payload: dict[str, Any], current_price: float | None) -> float | None:
+    implied_price = safe_float(case_payload.get("implied_price"))
+    if implied_price in (None, 0) or current_price in (None, 0):
+        return None
+    return implied_price / current_price
+
+
 def build_three_case_valuation(
     stock_code: str,
     scan_data: dict[str, Any],
@@ -67,53 +116,77 @@ def build_three_case_valuation(
     market_cap = extract_market_cap(quote)
     current_price = extract_latest_price(quote, kline)
     share_count = market_cap / current_price if market_cap not in (None, 0) and current_price not in (None, 0) else None
-    latest_income = get_latest_income_snapshot(scan_data.get("income_statement", {}).get("data", []))
+    income_records = scan_data.get("income_statement", {}).get("data", [])
+    latest_income = get_latest_income_snapshot(income_records)
     latest_balance = get_latest_balance_snapshot(scan_data.get("balance_sheet", {}).get("data", []))
     profit = latest_income.get("net_profit")
     equity = latest_balance.get("total_equity")
+    normalized_profit = _historical_profit_anchor(income_records) or profit
 
     if primary_type == "compounder":
-        multiples = type_cfg.get("multiples", {}) or {}
-        bear_profit = profit * 0.9 if profit is not None else None
-        base_profit = profit * 1.05 if profit is not None else None
-        bull_profit = profit * 1.20 if profit is not None else None
-        bear = _case_payload("owner_earnings_pe", ["flat earnings", "no rerating"], _product(bear_profit, multiples.get("bear")), share_count)
-        base = _case_payload("owner_earnings_pe", ["stable quality", "mid-single-digit growth"], _product(base_profit, multiples.get("base")), share_count)
-        bull = _case_payload("owner_earnings_pe", ["durable pricing power", "premium multiple"], _product(bull_profit, multiples.get("bull")), share_count)
+        floor_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "floor", "bear"))
+        normalized_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "normalized", "base"))
+        recognition_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "recognition", "bull"))
+        floor = _case_payload("owner_earnings_no_growth", ["no-growth owner earnings"], floor_value, share_count)
+        normalized = _case_payload("owner_earnings_fair_multiple", ["quality is maintained"], normalized_value, share_count)
+        recognition = _case_payload("premium_quality_multiple", ["market pays for durable quality"], recognition_value, share_count)
     elif primary_type == "cyclical":
-        multiples = type_cfg.get("multiples", {}) or {}
-        haircuts = type_cfg.get("normalized_haircuts", {}) or {}
-        normalized_profit = profit if profit is not None else (equity * 0.06 if equity is not None else None)
-        bear_value = _product(normalized_profit, haircuts.get("bear"), multiples.get("bear"))
-        base_value = _product(normalized_profit, haircuts.get("base"), multiples.get("base"))
-        bull_value = _product(normalized_profit, haircuts.get("bull"), multiples.get("bull"))
-        bear = _case_payload("normalized_earnings", ["trough conditions persist", "mid-cycle multiple at low end"], bear_value, share_count)
-        base = _case_payload("normalized_earnings", ["earnings normalize", "mid-cycle valuation"], base_value, share_count)
-        bull = _case_payload("normalized_earnings", ["pricing and utilization recover strongly"], bull_value, share_count)
+        floor_value = _scaled_value(equity, _resolve_case_multiple(type_cfg, "floor"))
+        normalized_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "normalized", "base"))
+        recognition_value = _product(normalized_profit, _resolve_case_multiple(type_cfg, "recognition", "bull"))
+        floor = _case_payload("tangible_book_or_replacement_cost", ["asset floor / replacement-cost style anchor"], floor_value, share_count)
+        normalized = _case_payload("mid_cycle_earnings", ["mid-cycle earnings power"], normalized_value, share_count)
+        recognition = _case_payload("rerated_mid_cycle_earnings", ["market recognizes normalized earnings"], recognition_value, share_count)
     elif primary_type == "turnaround":
-        haircuts = type_cfg.get("balance_sheet_haircuts", {}) or {}
-        multiples = type_cfg.get("recovery_multiples", {}) or {}
-        bear_value = _scaled_value(equity, haircuts.get("bear"))
-        base_value = _sum_known(_scaled_value(equity, haircuts.get("base")), _scaled_value(max(profit or 0, 0), multiples.get("base")))
-        bull_value = _sum_known(_scaled_value(equity, haircuts.get("bull")), _scaled_value(max(profit or 0, 0), multiples.get("bull")))
-        bear = _case_payload("survival_value", ["repair stalls", "value anchored by surviving assets"], bear_value, share_count)
-        base = _case_payload("recovery_value", ["operations stabilize", "partial rerating"], base_value if base_value else None, share_count)
-        bull = _case_payload("normalized_value", ["full repair path works", "market prices normalized earnings"], bull_value if bull_value else None, share_count)
+        floor_value = _scaled_value(equity, _resolve_book_multiple(type_cfg, "floor", "bear"))
+        normalized_value = _sum_known(
+            _scaled_value(equity, _resolve_book_multiple(type_cfg, "base", "base")),
+            _scaled_value(max(profit or 0, 0), _resolve_book_multiple(type_cfg, "normalized", "base")),
+        )
+        recognition_value = _sum_known(
+            _scaled_value(equity, _resolve_book_multiple(type_cfg, "bull", "bull")),
+            _scaled_value(max(profit or 0, 0), _resolve_book_multiple(type_cfg, "recognition", "bull")),
+        )
+        floor = _case_payload("survival_value", ["survival floor if repair stalls"], floor_value, share_count)
+        normalized = _case_payload("repaired_earnings", ["repair path partially works"], normalized_value, share_count)
+        recognition = _case_payload("post_repair_rerating", ["market rerates after repair"], recognition_value, share_count)
     elif primary_type == "asset_play":
-        book_multiples = type_cfg.get("book_multiples", {}) or {}
-        bear = _case_payload("book_value", ["discount persists"], _scaled_value(equity, book_multiples.get("bear")), share_count)
-        base = _case_payload("book_value", ["assets are recognized closer to book"], _scaled_value(equity, book_multiples.get("base")), share_count)
-        bull = _case_payload("book_value", ["asset unlock closes the discount"], _scaled_value(equity, book_multiples.get("bull")), share_count)
+        floor_value = _scaled_value(equity, _resolve_book_multiple(type_cfg, "floor", "bear"))
+        normalized_value = _scaled_value(equity, _resolve_book_multiple(type_cfg, "normalized", "base"))
+        recognition_value = _scaled_value(equity, _resolve_book_multiple(type_cfg, "recognition", "bull"))
+        floor = _case_payload("stressed_nav", ["discount persists"], floor_value, share_count)
+        normalized = _case_payload("book_or_nav", ["assets are valued closer to book"], normalized_value, share_count)
+        recognition = _case_payload("discount_close", ["discount closes as realization path lands"], recognition_value, share_count)
     else:
-        outcome_multiples = type_cfg.get("outcome_multiples", {}) or {}
-        anchor = market_cap or (equity if equity is not None else None)
-        bear = _case_payload("scenario_weighted_outcome", ["event path slips"], _scaled_value(anchor, outcome_multiples.get("bear")), share_count)
-        base = _case_payload("scenario_weighted_outcome", ["base event probability"], _scaled_value(anchor, outcome_multiples.get("base")), share_count)
-        bull = _case_payload("scenario_weighted_outcome", ["event lands cleanly"], _scaled_value(anchor, outcome_multiples.get("bull")), share_count)
+        anchor = market_cap or equity
+        floor_value = _scaled_value(anchor, _resolve_book_multiple(type_cfg, "downside", "bear"))
+        normalized_value = _scaled_value(anchor, _resolve_book_multiple(type_cfg, "base", "base"))
+        recognition_value = _scaled_value(anchor, _resolve_book_multiple(type_cfg, "upside", "bull"))
+        floor = _case_payload("downside_case_weighted", ["downside scenario weighting"], floor_value, share_count)
+        normalized = _case_payload("base_case_weighted", ["base scenario weighting"], normalized_value, share_count)
+        recognition = _case_payload("upside_case_weighted", ["upside scenario weighting"], recognition_value, share_count)
 
-    current_vs_base = None
-    if current_price not in (None, 0) and base.get("implied_price") not in (None, 0):
-        current_vs_base = current_price / base["implied_price"]
+    floor_protection = _case_price_ratio(floor, current_price)
+    normalized_ratio = _case_price_ratio(normalized, current_price)
+    recognition_ratio = _case_price_ratio(recognition, current_price)
+    normalized_equity_value = safe_float(normalized.get("implied_equity_value"))
+    recognition_equity_value = safe_float(recognition.get("implied_equity_value"))
+    wind_dependency = None
+    if normalized_equity_value not in (None, 0) and recognition_equity_value is not None:
+        wind_dependency = round(recognition_equity_value / normalized_equity_value - 1, 4)
+
+    current_vs_normalized = None
+    if current_price not in (None, 0) and normalized.get("implied_price") not in (None, 0):
+        current_vs_normalized = current_price / normalized["implied_price"]
+
+    summary = {
+        "floor_protection": None if floor_protection is None else round(floor_protection, 4),
+        "normalized_upside": None if normalized_ratio is None else round(normalized_ratio - 1, 4),
+        "recognition_upside": None if recognition_ratio is None else round(recognition_ratio - 1, 4),
+        "wind_dependency": wind_dependency,
+        "margin_of_safety": None if current_vs_normalized is None else round(1 - current_vs_normalized, 4),
+        "priced_in": "optimistic" if current_vs_normalized is not None and current_vs_normalized > 1.0 else "conservative_to_fair",
+    }
 
     return {
         "stock_code": stock_code,
@@ -121,11 +194,11 @@ def build_three_case_valuation(
         "current_price": current_price,
         "market_cap": market_cap,
         "share_count": share_count,
-        "bear_case": bear,
-        "base_case": base,
-        "bull_case": bull,
-        "summary": {
-            "margin_of_safety": None if current_vs_base is None else round(1 - current_vs_base, 4),
-            "priced_in": "optimistic" if current_vs_base is not None and current_vs_base > 1.0 else "conservative_to_fair",
-        },
+        "floor_case": floor,
+        "normalized_case": normalized,
+        "recognition_case": recognition,
+        "bear_case": floor,
+        "base_case": normalized,
+        "bull_case": recognition,
+        "summary": summary,
     }
