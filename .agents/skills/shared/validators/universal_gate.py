@@ -3,7 +3,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from utils.config_loader import load_scoring_rules, load_vcrf_degradation
+from engines.flow_realization_engine import score_realization_axis
+from engines.state_transition_tracker import enforce_transition
+from engines.valuation_engine import build_three_case_valuation
+from utils.config_loader import load_scoring_rules, load_vcrf_degradation, load_vcrf_state_machine
 from utils.financial_snapshot import (
     extract_latest_price,
     extract_market_cap,
@@ -19,7 +22,9 @@ from utils.opportunity_classifier import (
     classify_state_ownership,
     determine_opportunity_type,
 )
+from utils.primary_type_router import build_driver_stack
 from utils.score_verdict import pick_score_verdict
+from utils.vcrf_probes import score_underwrite_axis
 from utils.value_utils import clamp, normalize_text, safe_float
 
 
@@ -300,6 +305,109 @@ def _dimension_payload(
     }
 
 
+def _component_gate(component: dict[str, Any], *, passing: float, caution: float) -> dict[str, Any]:
+    score = safe_float(component.get("score")) or 0.0
+    return {
+        "status": _status_from_score(score, passing, caution),
+        "reason": component.get("reason", ""),
+        "score": round(score, 2),
+        "availability": component.get("availability", "unknown"),
+        "confidence": component.get("confidence", "unknown"),
+    }
+
+
+def _merge_opportunity_context(legacy_context: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(legacy_context or {})
+    primary_type = normalize_text(driver_stack.get("primary_type")).lower()
+    merged["primary_type"] = primary_type or merged.get("primary_type", "unknown")
+    merged["sector_route"] = normalize_text(driver_stack.get("sector_route")).lower()
+    merged["primary_type_confidence"] = driver_stack.get("primary_type_confidence")
+    if not merged.get("primary_label"):
+        merged["primary_label"] = (primary_type or "unknown").replace("_", " ").title()
+    return merged
+
+
+def _classify_vcrf_state(
+    underwrite_score: float,
+    realization_score: float,
+    *,
+    flow_stage: str,
+    valuation_summary: dict[str, Any],
+) -> str:
+    cfg = load_vcrf_state_machine().get("state_thresholds", {})
+    reject_floor = float(cfg.get("reject_underwrite_below", 60))
+    cold_cfg = cfg.get("cold_storage", {}) or {}
+    ready_cfg = cfg.get("ready", {}) or {}
+    attack_cfg = cfg.get("attack", {}) or {}
+    harvest_cfg = cfg.get("harvest", {}) or {}
+
+    recognition_upside = safe_float(valuation_summary.get("recognition_upside"))
+    crowded_flow_stage = normalize_text(harvest_cfg.get("crowded_flow_stage")).lower()
+    if underwrite_score < reject_floor:
+        return "REJECT"
+    if recognition_upside is not None and recognition_upside <= safe_float(harvest_cfg.get("recognition_upside_max")):
+        return "HARVEST"
+    if crowded_flow_stage and normalize_text(flow_stage).lower() == crowded_flow_stage:
+        return "HARVEST"
+    if underwrite_score >= float(attack_cfg.get("min_underwrite", 75)) and realization_score >= float(attack_cfg.get("min_realization", 70)):
+        return "ATTACK"
+    if (
+        underwrite_score >= float(ready_cfg.get("min_underwrite", 70))
+        and realization_score >= float(ready_cfg.get("min_realization", 40))
+        and realization_score <= float(ready_cfg.get("max_realization", 70))
+    ):
+        return "READY"
+    if underwrite_score >= float(cold_cfg.get("min_underwrite", 75)) and realization_score <= float(cold_cfg.get("max_realization", 39.999)):
+        return "COLD_STORAGE"
+    return "REJECT"
+
+
+def _legacy_scorecard_alias(
+    *,
+    context: dict[str, Any],
+    hard_vetos: list[str],
+) -> dict[str, Any]:
+    type_clarity_score = _type_clarity_score(context["opportunity_context"])
+    business_quality_score = _business_quality_score(context)
+    survival_score = _survival_score(context)
+    management_score = float(context["management"]["score"])
+    regime_cycle_score = _regime_cycle_score(context)
+    valuation_score, _ = _valuation_score(
+        context["opportunity_context"].get("primary_type", "unknown"),
+        context["pb"],
+        context["current_vs_high"],
+    )
+    catalyst_score = float(context["catalyst"]["score"])
+    market_structure_score = _market_structure_score(context)
+    total_score = round(
+        type_clarity_score
+        + business_quality_score
+        + survival_score
+        + management_score
+        + regime_cycle_score
+        + valuation_score
+        + catalyst_score
+        + market_structure_score,
+        2,
+    )
+    verdict = pick_score_verdict(total_score)
+    if hard_vetos:
+        verdict = {"label": "reject / no action", "action": "hard veto triggered"}
+    return {
+        "type_clarity": round(type_clarity_score, 2),
+        "business_quality": round(business_quality_score, 2),
+        "survival": round(survival_score, 2),
+        "management": round(management_score, 2),
+        "regime_cycle": round(regime_cycle_score, 2),
+        "valuation": round(valuation_score, 2),
+        "catalyst": round(catalyst_score, 2),
+        "market_structure": round(market_structure_score, 2),
+        "total": total_score,
+        "verdict": verdict["label"],
+        "action": verdict["action"],
+    }
+
+
 def evaluate_partial_gate_dimensions(
     stock_code: str,
     scan_data: dict[str, Any],
@@ -428,6 +536,7 @@ def evaluate_universal_gates(
     *,
     opportunity_context: dict[str, Any] | None = None,
     extra_texts: list[str] | None = None,
+    prior_state: str | None = None,
 ) -> dict[str, Any]:
     context = _resolve_gate_context(
         stock_code,
@@ -446,66 +555,99 @@ def evaluate_universal_gates(
     if context["management"]["score"] <= 2 and context["management"]["red_flags"]:
         hard_vetos.append("management credibility is materially impaired")
 
-    type_clarity_score = _type_clarity_score(context["opportunity_context"])
-    business_quality_score = _business_quality_score(context)
-    survival_score = _survival_score(context)
-    management_score = float(context["management"]["score"])
-    regime_cycle_score = _regime_cycle_score(context)
-    valuation_score, valuation_reason = _valuation_score(
-        context["opportunity_context"].get("primary_type", "unknown"),
-        context["pb"],
-        context["current_vs_high"],
-    )
-    catalyst_score = float(context["catalyst"]["score"])
-    market_structure_score = _market_structure_score(context)
+    driver_stack = build_driver_stack(stock_code, scan_data, extra_texts=extra_texts)
+    merged_opportunity = _merge_opportunity_context(context["opportunity_context"], driver_stack)
+    context["opportunity_context"] = merged_opportunity
 
-    total_score = round(
-        type_clarity_score
-        + business_quality_score
-        + survival_score
-        + management_score
-        + regime_cycle_score
-        + valuation_score
-        + catalyst_score
-        + market_structure_score,
-        2,
-    )
-    verdict = pick_score_verdict(total_score)
-    if hard_vetos:
-        verdict = {"label": "reject / no action", "action": "hard veto triggered"}
+    underwrite_axis = score_underwrite_axis(scan_data, driver_stack)
+    initial_realization_axis = score_realization_axis(scan_data, driver_stack)
+    driver_stack.setdefault("modifiers", {})["flow_stage"] = initial_realization_axis.get("flow_stage", "latent")
+    realization_axis = score_realization_axis(scan_data, driver_stack)
+    flow_stage = normalize_text(realization_axis.get("flow_stage") or driver_stack.get("modifiers", {}).get("flow_stage") or "latent").lower()
+    driver_stack["modifiers"]["flow_stage"] = flow_stage
 
-    gates = {
-        "business_truth": {
-            "status": _status_from_score(business_quality_score, 14.0, 9.0),
-            "reason": f"top segment={context['purity'].get('top_segment') or 'N/A'}, moat={context['moat']['reason']}",
-        },
-        "survival_truth": {
-            "status": _status_from_score(survival_score, 11.0, 7.0),
-            "reason": f"net profit={context['latest_income'].get('net_profit')}, equity={context['latest_balance'].get('total_equity')}",
-        },
-        "quality_truth": {
-            "status": _status_from_score(management_score + context['moat']['score'], 14.0, 9.0),
-            "reason": f"management={context['management']['verdict']}, moat={context['moat']['verdict']}",
-        },
-        "regime_cycle_truth": {
-            "status": _status_from_score(regime_cycle_score, 10.0, 6.0),
-            "reason": context["bottom_pattern"]["reason"],
-        },
-        "valuation_truth": {
-            "status": _status_from_score(valuation_score, 14.0, 9.0),
-            "reason": valuation_reason,
-        },
-        "catalyst_truth": {
-            "status": _status_from_score(catalyst_score, 6.0, 3.0),
-            "reason": context["catalyst"]["reason"],
-        },
+    valuation_result = build_three_case_valuation(stock_code, scan_data, driver_stack)
+    valuation_summary = valuation_result.get("summary", {}) or {}
+    proposed_state = _classify_vcrf_state(
+        underwrite_axis.get("score", 0.0),
+        realization_axis.get("score", 0.0),
+        flow_stage=flow_stage,
+        valuation_summary=valuation_summary,
+    )
+    component_availability = {
+        name: component.get("availability", "missing")
+        for name, component in (underwrite_axis.get("components", {}) or {}).items()
     }
+    capped_state = _apply_degradation_caps(proposed_state, component_availability)
+    prev_state = str(prior_state or "NEW").upper()
+    enforced_state, transition_allowed, transition_reason = enforce_transition(
+        prev_state,
+        capped_state,
+        cfg=load_vcrf_state_machine(),
+    )
+    position_state = normalize_text(enforced_state).lower()
+
+    legacy_scorecard = _legacy_scorecard_alias(context=context, hard_vetos=hard_vetos)
+    gates = {
+        "business_or_asset_truth": _component_gate(
+            underwrite_axis["components"]["business_or_asset_quality"],
+            passing=70.0,
+            caution=50.0,
+        ),
+        "governance_truth": _component_gate(
+            underwrite_axis["components"]["governance_anti_fraud"],
+            passing=75.0,
+            caution=50.0,
+        ),
+        "valuation_floor_truth": _component_gate(
+            underwrite_axis["components"]["intrinsic_value_floor"],
+            passing=65.0,
+            caution=45.0,
+        ),
+        "survival_truth": _component_gate(
+            underwrite_axis["components"]["survival_boundary"],
+            passing=60.0,
+            caution=40.0,
+        ),
+        "realization_truth": {
+            "status": _status_from_score(realization_axis.get("score", 0.0), 70.0, 40.0),
+            "reason": f"flow_stage={flow_stage}; {realization_axis['components']['flow_confirmation'].get('reason', '')}",
+            "score": round(realization_axis.get("score", 0.0), 2),
+            "availability": realization_axis.get("confidence", "unknown"),
+            "confidence": realization_axis.get("confidence", "unknown"),
+        },
+        "regime_cycle_truth": _component_gate(
+            realization_axis["components"]["regime_cycle_position"],
+            passing=70.0,
+            caution=45.0,
+        ),
+        "catalyst_truth": _component_gate(
+            realization_axis["components"]["catalyst_quality"],
+            passing=65.0,
+            caution=45.0,
+        ),
+    }
+    gates["business_truth"] = dict(gates["business_or_asset_truth"])
+    gates["quality_truth"] = dict(gates["governance_truth"])
+    gates["valuation_truth"] = dict(gates["valuation_floor_truth"])
 
     return {
         "stock_code": stock_code,
-        "opportunity_context": context["opportunity_context"],
+        "opportunity_context": merged_opportunity,
+        "driver_stack": driver_stack,
+        "underwrite_axis": underwrite_axis,
+        "realization_axis": realization_axis,
         "ownership": context["ownership"],
         "hard_vetos": hard_vetos,
+        "position_state": position_state,
+        "prev_state": prev_state,
+        "transition_allowed": transition_allowed,
+        "transition_reason": transition_reason,
+        "flow_stage": flow_stage,
+        "floor_protection": valuation_summary.get("floor_protection"),
+        "normalized_upside": valuation_summary.get("normalized_upside"),
+        "recognition_upside": valuation_summary.get("recognition_upside"),
+        "wind_dependency": valuation_summary.get("wind_dependency"),
         "gates": gates,
         "signals": {
             "purity": context["purity"],
@@ -513,18 +655,7 @@ def evaluate_universal_gates(
             "management": context["management"],
             "catalyst": context["catalyst"],
             "bottom_pattern": context["bottom_pattern"],
+            "flow_confirmation": realization_axis["components"]["flow_confirmation"],
         },
-        "scorecard": {
-            "type_clarity": round(type_clarity_score, 2),
-            "business_quality": round(business_quality_score, 2),
-            "survival": round(survival_score, 2),
-            "management": round(management_score, 2),
-            "regime_cycle": round(regime_cycle_score, 2),
-            "valuation": round(valuation_score, 2),
-            "catalyst": round(catalyst_score, 2),
-            "market_structure": round(market_structure_score, 2),
-            "total": total_score,
-            "verdict": verdict["label"],
-            "action": verdict["action"],
-        },
+        "scorecard": legacy_scorecard,
     }

@@ -1336,6 +1336,57 @@ class VCRFGateAndRadarTests(unittest.TestCase):
         self.assertNotEqual(codes, top_6_by_cap, "Universe should not be pure top-cap slice")
 
 
+class VCRFUniversalGateTests(unittest.TestCase):
+    def _scan_data(self, *, equity=1_000_000_000, profit=120_000_000, industry="煤炭") -> dict:
+        return {
+            "company_profile": {"data": {"行业": industry, "主营业务": f"{industry}主业", "实际控制人": "国务院国资委", "股票简称": "测试股份"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": industry, "主营收入": 85, "收入比例": 85}]},
+            "valuation_history": {"data": {"pb": 0.95, "pb_percentile": 18}},
+            "stock_kline": {
+                "data": {
+                    "current_vs_5yr_high": 42,
+                    "latest_close": 10.0,
+                    "volume_ratio_20_vs_120": 1.4,
+                    "drawdown_from_5yr_high_pct": 50,
+                    "low_5y": 8.0,
+                    "avg_turnover_1y": 500_000_000,
+                }
+            },
+            "realtime_quote": {"data": {"最新价": 10.0, "总市值": 8_000_000_000}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": profit}]},
+            "balance_sheet": {
+                "data": [
+                    {
+                        "报告期": "20241231",
+                        "归属于母公司所有者权益合计": equity,
+                        "资产总计": 2_000_000_000,
+                        "货币资金": 600_000_000,
+                        "短期借款": 150_000_000,
+                    }
+                ]
+            },
+            "cashflow_statement": {"data": [{"报告期": "20241231", "经营活动产生的现金流量净额": 260_000_000}]},
+            "shareholder_count": {"data": [{"股东户数": 120_000}, {"股东户数": 135_000}]},
+            "event_signals": {"buyback": True},
+        }
+
+    def test_universal_gate_returns_driver_stack_and_dual_axes(self) -> None:
+        gate = evaluate_universal_gates("600348", self._scan_data())
+        self.assertIn("driver_stack", gate)
+        self.assertIn("underwrite_axis", gate)
+        self.assertIn("realization_axis", gate)
+
+    def test_universal_gate_keeps_legacy_scorecard_aliases_during_transition(self) -> None:
+        gate = evaluate_universal_gates("600348", self._scan_data())
+        self.assertIn("scorecard", gate)
+        self.assertIn("business_truth", gate["gates"])
+
+    def test_harvest_to_attack_is_downgraded(self) -> None:
+        aggressive_scan_data = self._scan_data(profit=240_000_000)
+        gate = evaluate_universal_gates("600348", aggressive_scan_data, prior_state="HARVEST")
+        self.assertNotEqual(gate["position_state"], "attack")
+
+
 class VCRFConfigContractTests(unittest.TestCase):
     def test_loaders_expose_vcrf_config_files(self) -> None:
         from utils.config_loader import (

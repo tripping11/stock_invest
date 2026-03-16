@@ -113,7 +113,7 @@ def deep_sniper(stock_code: str, company_name: str, *, include_tier0: bool | Non
         opportunity_context=opportunity,
         extra_texts=[company_name, json.dumps(tier0_verification, ensure_ascii=False, default=str)],
     )
-    valuation_result = build_three_case_valuation(stock_code, scan_data, opportunity)
+    valuation_result = build_three_case_valuation(stock_code, scan_data, gate_result.get("driver_stack", opportunity))
     synthesis_result = build_investment_synthesis(stock_code, company_name, gate_result, valuation_result)
     report_result = generate_deep_dive_report(
         stock_code,
@@ -130,6 +130,13 @@ def deep_sniper(stock_code: str, company_name: str, *, include_tier0: bool | Non
         "stock_code": stock_code,
         "company_name": company_name,
         "opportunity": opportunity,
+        "driver_stack": gate_result.get("driver_stack"),
+        "underwrite_axis": gate_result.get("underwrite_axis"),
+        "realization_axis": gate_result.get("realization_axis"),
+        "position_state": gate_result.get("position_state"),
+        "prev_state": gate_result.get("prev_state"),
+        "transition_reason": gate_result.get("transition_reason"),
+        "flow_stage": gate_result.get("flow_stage"),
         "gate_result": gate_result,
         "valuation_result": valuation_result,
         "synthesis_result": synthesis_result,
@@ -151,7 +158,17 @@ def main() -> None:
     parser.add_argument("--skip-tier0", action="store_true")
     args = parser.parse_args()
     result = deep_sniper(args.stock_code, args.company_name, include_tier0=not args.skip_tier0)
-    print(json.dumps({"report_path": result["report_path"], "verdict": result["gate_result"]["scorecard"]["verdict"]}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "report_path": result["report_path"],
+                "verdict": result["gate_result"]["scorecard"]["verdict"],
+                "position_state": result.get("position_state"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
