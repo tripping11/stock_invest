@@ -160,7 +160,8 @@ def _load_universe(scope: str, limit: int) -> list[dict[str, Any]]:
                 }
             )
         if records:
-            return _normalize_universe_records(records, limit)
+            normalized = _normalize_universe_records(records, limit)
+            return [{"code": item["code"], "name": item["name"]} for item in normalized]
         raise
 
 
