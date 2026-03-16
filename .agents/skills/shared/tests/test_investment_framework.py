@@ -1041,5 +1041,300 @@ class LegacyCleanupTests(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
 
 
+# ---------------------------------------------------------------------------
+# Chunk 1 – VCRF failing tests (flow engine, valuation contract, gate/radar)
+# These tests are expected to FAIL until the corresponding engines are built.
+# ---------------------------------------------------------------------------
+
+
+class VCRFFlowEngineTests(unittest.TestCase):
+    """Task 1: Flow/realization engine contract tests."""
+
+    def test_flow_engine_classifies_ignition_when_turnover_and_relative_strength_improve(self) -> None:
+        from engines.flow_realization_engine import FlowInputs, score_flow_setup
+
+        result = score_flow_setup(
+            FlowInputs(
+                current_price=10.0,
+                avg20_turnover=1.8,
+                avg120_turnover=1.0,
+                rel_strength_20d=0.09,
+                rel_strength_60d=0.12,
+                rebound_from_low_pct=0.18,
+                shareholder_concentration_delta=0.0,
+                institutional_holding_delta=0.0,
+                buyback_flag=False,
+                mna_flag=False,
+            )
+        )
+        self.assertEqual(result["stage"], "ignition")
+
+    def test_position_state_is_cold_storage_when_floor_is_strong_but_flow_is_latent(self) -> None:
+        from engines.flow_realization_engine import classify_position_state
+
+        state = classify_position_state(
+            floor_protection=0.92,
+            normalized_upside=0.45,
+            recognition_upside=0.70,
+            repair_state="stabilizing",
+            flow_stage="latent",
+        )
+        self.assertEqual(state, "cold_storage")
+
+    def test_position_state_is_attack_when_flow_trends_and_recognition_upside_remains(self) -> None:
+        from engines.flow_realization_engine import classify_position_state
+
+        state = classify_position_state(
+            floor_protection=0.88,
+            normalized_upside=0.35,
+            recognition_upside=0.55,
+            repair_state="confirmed",
+            flow_stage="trend",
+        )
+        self.assertEqual(state, "attack")
+
+    def test_flow_engine_degrades_to_latent_when_optional_inputs_are_missing(self) -> None:
+        from engines.flow_realization_engine import FlowInputs, score_flow_setup
+
+        result = score_flow_setup(
+            FlowInputs(
+                current_price=10.0,
+                avg20_turnover=None,
+                avg120_turnover=None,
+                rel_strength_20d=None,
+                rel_strength_60d=None,
+                rebound_from_low_pct=None,
+                shareholder_concentration_delta=None,
+                institutional_holding_delta=None,
+            )
+        )
+        self.assertIn(result["stage"], {"abandoned", "latent"})
+
+    def test_position_state_rejects_when_floor_protection_is_too_low(self) -> None:
+        from engines.flow_realization_engine import classify_position_state
+
+        state = classify_position_state(
+            floor_protection=0.60,
+            normalized_upside=0.50,
+            recognition_upside=0.80,
+            repair_state="confirmed",
+            flow_stage="trend",
+        )
+        self.assertEqual(state, "reject")
+
+    def test_position_state_is_harvest_when_normalized_upside_exhausted_in_trend(self) -> None:
+        from engines.flow_realization_engine import classify_position_state
+
+        state = classify_position_state(
+            floor_protection=0.95,
+            normalized_upside=0.10,
+            recognition_upside=0.15,
+            repair_state="confirmed",
+            flow_stage="trend",
+        )
+        self.assertEqual(state, "harvest")
+
+    def test_flow_stage_order_is_monotonic(self) -> None:
+        from engines.flow_realization_engine import FLOW_STAGE_ORDER
+
+        ordered = sorted(FLOW_STAGE_ORDER.items(), key=lambda kv: kv[1])
+        self.assertEqual(
+            [stage for stage, _ in ordered],
+            ["abandoned", "latent", "ignition", "trend", "crowded"],
+        )
+
+    def test_secondary_watch_collapses_into_cold_storage(self) -> None:
+        """Phase-1 rule: secondary_watch is not a legal state."""
+        from engines.flow_realization_engine import classify_position_state
+
+        # Latent flow + floor OK but normalized_upside below cold_storage threshold
+        state = classify_position_state(
+            floor_protection=0.85,
+            normalized_upside=0.30,
+            recognition_upside=0.50,
+            repair_state="none",
+            flow_stage="latent",
+        )
+        self.assertIn(state, {"cold_storage", "reject"})
+        self.assertNotEqual(state, "secondary_watch")
+
+
+class VCRFValuationContractTests(unittest.TestCase):
+    """Task 2: Valuation engine VCRF output contract tests."""
+
+    def _cyclical_scan_data(self) -> dict:
+        return {
+            "company_profile": {"data": {"行业": "煤炭", "主营业务": "煤炭开采与销售"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": "煤炭", "主营收入": 85, "收入比例": 85}]},
+            "valuation_history": {"data": {"pb": 0.95, "pb_percentile": 18}},
+            "stock_kline": {"data": {"current_vs_5yr_high": 42, "latest_close": 10.0}},
+            "realtime_quote": {"data": {"最新价": 10.0, "总市值": 8_000_000_000}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 120_000_000}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 1_000_000_000}]},
+        }
+
+    def test_valuation_outputs_vcrf_case_names_and_summary_metrics(self) -> None:
+        scan_data = self._cyclical_scan_data()
+        valuation = build_three_case_valuation("600348", scan_data, {"primary_type": "cyclical"})
+        self.assertIn("floor_case", valuation)
+        self.assertIn("normalized_case", valuation)
+        self.assertIn("recognition_case", valuation)
+        self.assertIn("floor_protection", valuation["summary"])
+        self.assertIn("normalized_upside", valuation["summary"])
+        self.assertIn("recognition_upside", valuation["summary"])
+        self.assertIn("wind_dependency", valuation["summary"])
+
+    def test_valuation_keeps_base_case_alias_during_transition(self) -> None:
+        scan_data = self._cyclical_scan_data()
+        valuation = build_three_case_valuation("600348", scan_data, {"primary_type": "cyclical"})
+        self.assertEqual(
+            valuation["base_case"]["implied_price"],
+            valuation["normalized_case"]["implied_price"],
+        )
+
+    def test_valuation_keeps_bear_case_alias_during_transition(self) -> None:
+        scan_data = self._cyclical_scan_data()
+        valuation = build_three_case_valuation("600348", scan_data, {"primary_type": "cyclical"})
+        self.assertEqual(
+            valuation["bear_case"]["implied_price"],
+            valuation["floor_case"]["implied_price"],
+        )
+
+    def test_valuation_keeps_bull_case_alias_during_transition(self) -> None:
+        scan_data = self._cyclical_scan_data()
+        valuation = build_three_case_valuation("600348", scan_data, {"primary_type": "cyclical"})
+        self.assertEqual(
+            valuation["bull_case"]["implied_price"],
+            valuation["recognition_case"]["implied_price"],
+        )
+
+    def test_floor_protection_is_ratio_of_floor_to_current_price(self) -> None:
+        scan_data = self._cyclical_scan_data()
+        valuation = build_three_case_valuation("600348", scan_data, {"primary_type": "cyclical"})
+        if valuation["floor_case"]["implied_price"] is not None:
+            expected = valuation["floor_case"]["implied_price"] / valuation["current_price"]
+            self.assertAlmostEqual(valuation["summary"]["floor_protection"], expected, places=4)
+
+    def test_normalized_upside_is_ratio_minus_one(self) -> None:
+        scan_data = self._cyclical_scan_data()
+        valuation = build_three_case_valuation("600348", scan_data, {"primary_type": "cyclical"})
+        if valuation["normalized_case"]["implied_price"] is not None:
+            expected = valuation["normalized_case"]["implied_price"] / valuation["current_price"] - 1
+            self.assertAlmostEqual(valuation["summary"]["normalized_upside"], expected, places=4)
+
+    def test_cyclical_normalized_value_prefers_history_based_anchor(self) -> None:
+        scan_data = self._cyclical_scan_data()
+        valuation = build_three_case_valuation("600348", scan_data, {"primary_type": "cyclical"})
+        if valuation["normalized_case"]["implied_equity_value"] is not None and valuation["floor_case"]["implied_equity_value"] is not None:
+            self.assertGreater(
+                valuation["normalized_case"]["implied_equity_value"],
+                valuation["floor_case"]["implied_equity_value"],
+            )
+
+
+class VCRFGateAndRadarTests(unittest.TestCase):
+    """Task 3: Gate-state and radar behavior contract tests."""
+
+    def _scan_data(self, *, equity=1_000_000_000, profit=120_000_000, industry="煤炭") -> dict:
+        return {
+            "company_profile": {"data": {"行业": industry, "主营业务": f"{industry}主业", "实际控制人": "国务院国资委", "股票简称": "测试股份"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": industry, "主营收入": 85, "收入比例": 85}]},
+            "valuation_history": {"data": {"pb": 0.95, "pb_percentile": 18}},
+            "stock_kline": {"data": {"current_vs_5yr_high": 42, "latest_close": 10.0}},
+            "realtime_quote": {"data": {"最新价": 10.0, "总市值": 8_000_000_000}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": profit}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": equity}]},
+        }
+
+    def test_universal_gate_outputs_vcrf_gate_names(self) -> None:
+        gate = evaluate_universal_gates("600348", self._scan_data())
+        self.assertIn("business_or_asset_truth", gate["gates"])
+        self.assertIn("governance_truth", gate["gates"])
+        self.assertIn("valuation_floor_truth", gate["gates"])
+        self.assertIn("realization_truth", gate["gates"])
+
+    def test_universal_gate_includes_hidden_position_state(self) -> None:
+        gate = evaluate_universal_gates("600348", self._scan_data())
+        self.assertIn(gate["position_state"], {"cold_storage", "ready", "attack", "harvest", "reject"})
+
+    def test_universal_gate_includes_flow_stage(self) -> None:
+        gate = evaluate_universal_gates("600348", self._scan_data())
+        self.assertIn(gate["flow_stage"], {"abandoned", "latent", "ignition", "trend", "crowded"})
+
+    def test_universal_gate_preserves_signals_catalyst_bridge(self) -> None:
+        """Phase-1 compatibility: signals.catalyst must still exist for synthesis_engine."""
+        gate = evaluate_universal_gates("600348", self._scan_data())
+        self.assertIn("catalyst", gate.get("signals", {}))
+
+    def test_universal_gate_preserves_legacy_gate_aliases(self) -> None:
+        gate = evaluate_universal_gates("600348", self._scan_data())
+        # Legacy consumers may still read these
+        self.assertIn("business_truth", gate["gates"])
+        self.assertIn("survival_truth", gate["gates"])
+
+    def test_radar_priority_bucket_requires_ready_or_attack_state(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        partial_scan_data = PartialRadarFlowTests()._partial_scan_data_real_keys()
+        enrichment_scan_data = {
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 120_000_000}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 1_000_000_000}]},
+        }
+        partial_gate = {
+            "decidable_hard_vetos": [],
+            "score_upper_bound": 90.0,
+            "blocked_hard_vetos": [],
+            "dimensions": {
+                "survival": {"confidence": "none", "requires": ["income_statement", "balance_sheet"]},
+                "valuation": {"confidence": "full", "requires": []},
+            },
+        }
+
+        with patch.object(radar_scan_engine, "_load_universe", return_value=[{"code": "600348", "name": "测试股份"}]):
+            with patch.object(radar_scan_engine, "run_named_scan_steps", side_effect=[partial_scan_data, enrichment_scan_data], create=True):
+                with patch.object(radar_scan_engine, "evaluate_partial_gate_dimensions", return_value=partial_gate, create=True):
+                    with patch.object(radar_scan_engine, "generate_market_scan_report", return_value={"report_path": "report.md"}, create=True):
+                        result = radar_scan_engine.run_radar_scan("A-share", limit=1)
+
+        for item in result.get("priority_shortlist", []):
+            self.assertIn(
+                item.get("position_state"),
+                {"ready", "attack"},
+                f"priority_shortlist should only contain ready/attack, got {item.get('position_state')}",
+            )
+
+    def test_radar_candidate_payload_includes_vcrf_fields(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        scan_data = self._scan_data()
+        payload = radar_scan_engine._candidate_payload("600348", "测试股份", scan_data)
+        for field in ("position_state", "flow_stage", "floor_protection", "normalized_upside", "recognition_upside"):
+            self.assertIn(field, payload, f"candidate payload missing VCRF field: {field}")
+
+    def test_load_universe_prefers_layered_sample_over_top_market_cap_slice(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        # Build a fake snapshot with clear size diversity
+        rows = []
+        for i, (code, name, cap) in enumerate([
+            ("600000", "MegaCap", 500_000_000_000),
+            ("600001", "LargeCap", 100_000_000_000),
+            ("600002", "MidCap1", 30_000_000_000),
+            ("600003", "MidCap2", 20_000_000_000),
+            ("600004", "SmallCap1", 8_000_000_000),
+            ("600005", "SmallCap2", 6_000_000_000),
+            ("600006", "SmallCap3", 5_500_000_000),
+            ("600007", "MicroCap", 3_000_000_000),
+        ]):
+            rows.append({"代码": code, "名称": name, "总市值": cap})
+        fake_df = pd.DataFrame(rows)
+
+        with patch.object(radar_scan_engine.ak, "stock_zh_a_spot_em", return_value=fake_df):
+            universe = radar_scan_engine._load_universe("A-share", 6)
+
+        codes = [item["code"] for item in universe]
+        # Old behavior would just take the top-6 by market cap.
+        # New behavior must include at least one mid or small cap name.
+        top_6_by_cap = ["600000", "600001", "600002", "600003", "600004", "600005"]
+        self.assertNotEqual(codes, top_6_by_cap, "Universe should not be pure top-cap slice")
+
+
 if __name__ == "__main__":
     unittest.main()

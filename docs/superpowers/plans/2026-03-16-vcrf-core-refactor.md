@@ -37,6 +37,28 @@
 - Add hidden/internal state fields such as `position_state`, `flow_stage`, and `realization_path` without requiring report consumers to change immediately.
 - Keep backward-compatible valuation aliases (`bear_case`, `base_case`, `bull_case`) for one phase, mapping to `floor_case`, `normalized_case`, and `recognition_case`.
 - Keep backward-compatible gate aliases where needed so existing report builders do not break during the migration.
+- Preserve `signals.catalyst` as a compatibility bridge in phase 1 so `synthesis_engine.py` can remain unchanged while `realization_truth` is introduced.
+
+### Phase-1 flow data mode
+- Phase 1 runs the flow engine in a deliberately data-degraded mode.
+- Active inputs must come only from fields already derivable from the current `stock_kline` summary:
+  - `volume_ratio_20_vs_120`
+  - `drawdown_from_5yr_high_pct` and/or a derived rebound proxy from `latest_close / low_5y / high_5y`
+  - optional observability fields such as `avg_turnover_1y`
+- The following inputs are explicitly allowed to remain `None` / `False` in phase 1 without blocking rollout:
+  - `shareholder_concentration_delta`
+  - `institutional_holding_delta`
+  - `buyback_flag`
+  - `insider_buy_flag`
+  - `activist_flag`
+  - `mna_flag`
+- Tests must include an all-`None` degraded-input case and assert that the flow stage safely falls back to `latent` or `abandoned`, not a false-positive attack state.
+- `secondary_watch` from the expert prototype is intentionally collapsed into `cold_storage` for phase 1. The legal state set remains exactly five states:
+  - `cold_storage`
+  - `ready`
+  - `attack`
+  - `harvest`
+  - `reject`
 
 ---
 
@@ -56,6 +78,8 @@
   - Replace market-cap-descending universe truncation with layered sampling and incorporate state-aware ranking.
 - **Modify:** `D:/A价投+周期/.agents/skills/shared/engines/report_engine.py`
   - Surface the new valuation vocabulary and the hidden position-state summary without breaking report generation.
+- **Modify:** `D:/A价投+周期/.agents/skills/market-opportunity-scanner/config/scan_defaults.yaml`
+  - Hold phase-1 layered market-cap bucket thresholds and target sample weights so radar sampling is not hardcoded in Python.
 - **Modify:** `D:/A价投+周期/.agents/skills/shared/tests/test_investment_framework.py`
   - Add regression tests for flow stages, VCRF valuation outputs, gate/state outputs, and radar layered sampling behavior.
 
@@ -133,6 +157,25 @@ python -m unittest test_investment_framework.<new_flow_test_class> -v
 ```
 
 Expected: import or attribute failure for the missing flow engine.
+
+- [ ] **Step 5: Add a failing degraded-data test**
+
+```python
+def test_flow_engine_degrades_to_latent_when_optional_inputs_are_missing(self) -> None:
+    result = score_flow_setup(
+        FlowInputs(
+            current_price=10.0,
+            avg20_turnover=None,
+            avg120_turnover=None,
+            rel_strength_20d=None,
+            rel_strength_60d=None,
+            rebound_from_low_pct=None,
+            shareholder_concentration_delta=None,
+            institutional_holding_delta=None,
+        )
+    )
+    self.assertIn(result["stage"], {"abandoned", "latent"})
+```
 
 ### Task 2: Add failing tests for valuation contract changes
 
@@ -325,9 +368,21 @@ weight_templates:
   special_situation: ...
 ```
 
-- [ ] **Step 3: Keep `verdict` ranges for now unless a gate-state-specific override is needed**
+- [ ] **Step 3: Treat `thesis_clarity` as a fixed 5-point dimension outside the templates**
 
-- [ ] **Step 4: Re-run any config-loading tests that depend on `load_scoring_rules()`**
+Implementation note:
+
+```yaml
+dimensions:
+  thesis_clarity:
+    weight: 5
+```
+
+The template sum should intentionally be `95`, with `thesis_clarity` contributing the final fixed `5`.
+
+- [ ] **Step 4: Keep `verdict` ranges for now unless a gate-state-specific override is needed**
+
+- [ ] **Step 5: Re-run any config-loading tests that depend on `load_scoring_rules()`**
 
 ### Task 6: Replace valuation config with floor/normalized/recognition structure
 
@@ -462,6 +517,14 @@ _YAML_TO_INTERNAL = {
 }
 ```
 
+Also define a constant or equivalent comment-level contract:
+
+```python
+THESIS_CLARITY_FIXED = 5.0
+```
+
+Template-driven weighting must apply only to the remaining seven underwriting dimensions.
+
 - [ ] **Step 2: Add a resolved context block for flow and valuation summaries**
 
 The gate context should carry:
@@ -538,19 +601,50 @@ Record: `Chunk 4 universal gate and report vocabulary migrated.`
 
 **Files:**
 - Modify: `D:/A价投+周期/.agents/skills/market-opportunity-scanner/scripts/engines/radar_scan_engine.py`
+- Modify: `D:/A价投+周期/.agents/skills/market-opportunity-scanner/config/scan_defaults.yaml`
 - Test: `D:/A价投+周期/.agents/skills/shared/tests/test_investment_framework.py`
 
-- [ ] **Step 1: Add a helper that builds size buckets from the snapshot universe**
+- [ ] **Step 1: Add phase-1 market-cap bucket thresholds and target weights to config**
+
+Add to `scan_defaults.yaml`:
+
+```yaml
+layered_sampling:
+  market_cap_buckets:
+    micro: [2000000000, 5000000000]
+    small: [5000000000, 15000000000]
+    mid: [15000000000, 50000000000]
+    large: [50000000000, null]
+  target_mix_pct:
+    micro: 25
+    small: 40
+    mid: 25
+    large: 10
+```
+
+These values come directly from the expert blueprint and are the phase-1 defaults.
+
+- [ ] **Step 2: Add a helper that builds size buckets from the snapshot universe**
 
 Expected buckets:
-- `mega`
 - `large`
 - `mid`
 - `small`
 
+Optional derived bucket:
+- `mega` only if implementation chooses to split an ultra-large tail out of `large`
+
 Use existing market-cap and liquidity columns only. Do not add new adapter fetches in this phase.
 
-- [ ] **Step 2: Add a layered sampler**
+- [ ] **Step 3: Normalize blueprint buckets into the runtime bucket set used by radar**
+
+Phase-1 runtime rule:
+- `micro` and `small` blueprint buckets may be merged into runtime `small`
+- `mid` stays `mid`
+- `large` stays `large`
+- `mega` remains optional only if existing snapshot names naturally spill beyond the `large` bucket
+
+- [ ] **Step 4: Add a layered sampler**
 
 Minimal phase-1 behavior:
 - bias toward `mid` and `small`
@@ -558,9 +652,9 @@ Minimal phase-1 behavior:
 - preserve industry diversity where the snapshot exposes industry/name clues
 - still exclude `ST` in this phase
 
-- [ ] **Step 3: Make `_load_universe()` return the layered sample instead of the top-cap slice**
+- [ ] **Step 5: Make `_load_universe()` return the layered sample instead of the top-cap slice**
 
-- [ ] **Step 4: Run the new universe test and verify green**
+- [ ] **Step 6: Run the new universe test and verify green**
 
 ### Task 10: Make ranking state-aware while preserving public buckets
 
