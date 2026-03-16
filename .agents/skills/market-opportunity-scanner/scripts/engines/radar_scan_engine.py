@@ -30,6 +30,15 @@ with open(SKILLS_DIR / "market-opportunity-scanner" / "config" / "scan_defaults.
     DEFAULTS = (yaml.safe_load(handle) or {}).get("defaults", {})
 
 
+_POSITION_STATE_ORDER = {
+    "attack": 0,
+    "ready": 1,
+    "cold_storage": 2,
+    "harvest": 3,
+    "reject": 4,
+}
+
+
 def _pick_column(columns: list[str], exact: tuple[str, ...], contains: tuple[str, ...] = ()) -> str | None:
     for key in exact:
         if key in columns:
@@ -38,6 +47,100 @@ def _pick_column(columns: list[str], exact: tuple[str, ...], contains: tuple[str
         if contains and all(token in key for token in contains):
             return key
     return None
+
+
+def _load_layered_sampling_config() -> list[dict[str, Any]]:
+    buckets = DEFAULTS.get("layered_sampling", {}).get("buckets", [])
+    normalized: list[dict[str, Any]] = []
+    for entry in buckets:
+        if not isinstance(entry, dict):
+            continue
+        normalized.append(
+            {
+                "name": str(entry.get("name", "")).strip(),
+                "min_market_cap": safe_float(entry.get("min_market_cap")),
+                "max_market_cap": safe_float(entry.get("max_market_cap")),
+                "target_share": float(entry.get("target_share", 0.0)),
+            }
+        )
+    return [bucket for bucket in normalized if bucket["name"]]
+
+
+def _bucket_for_market_cap(market_cap: float | None, buckets: list[dict[str, Any]]) -> str | None:
+    if market_cap is None:
+        return None
+    for bucket in buckets:
+        min_cap = bucket.get("min_market_cap")
+        max_cap = bucket.get("max_market_cap")
+        if min_cap is not None and market_cap < min_cap:
+            continue
+        if max_cap is not None and market_cap >= max_cap:
+            continue
+        return str(bucket["name"])
+    return None
+
+
+def _allocate_bucket_targets(limit: int, buckets: list[dict[str, Any]]) -> dict[str, int]:
+    if limit <= 0 or not buckets:
+        return {}
+
+    base_counts: dict[str, int] = {}
+    remainders: list[tuple[float, str]] = []
+    assigned = 0
+    for bucket in buckets:
+        raw = limit * float(bucket.get("target_share", 0.0))
+        count = int(raw)
+        base_counts[str(bucket["name"])] = count
+        remainders.append((raw - count, str(bucket["name"])))
+        assigned += count
+
+    remainder_slots = max(0, limit - assigned)
+    for _, bucket_name in sorted(remainders, key=lambda item: (-item[0], item[1]))[:remainder_slots]:
+        base_counts[bucket_name] = base_counts.get(bucket_name, 0) + 1
+    return base_counts
+
+
+def _layered_sample_records(records: list[dict[str, Any]], limit: int) -> list[dict[str, str]]:
+    buckets = _load_layered_sampling_config()
+    if not buckets:
+        return [{"code": item["code"], "name": item["name"]} for item in records[:limit]]
+
+    grouped: dict[str, list[dict[str, Any]]] = {bucket["name"]: [] for bucket in buckets}
+    overflow: list[dict[str, Any]] = []
+    for item in records:
+        bucket_name = _bucket_for_market_cap(safe_float(item.get("market_cap")), buckets)
+        if bucket_name and bucket_name in grouped:
+            grouped[bucket_name].append(item)
+        else:
+            overflow.append(item)
+
+    targets = _allocate_bucket_targets(limit, buckets)
+    selected: list[dict[str, Any]] = []
+    seen_codes: set[str] = set()
+    for bucket in buckets:
+        bucket_name = str(bucket["name"])
+        take = targets.get(bucket_name, 0)
+        for item in grouped.get(bucket_name, [])[:take]:
+            code = str(item["code"])
+            if code in seen_codes:
+                continue
+            selected.append(item)
+            seen_codes.add(code)
+
+    if len(selected) < limit:
+        remainder = []
+        for bucket in buckets:
+            bucket_name = str(bucket["name"])
+            already = {item["code"] for item in selected if _bucket_for_market_cap(safe_float(item.get("market_cap")), buckets) == bucket_name}
+            remainder.extend(item for item in grouped.get(bucket_name, []) if item["code"] not in already and item["code"] not in seen_codes)
+        remainder.extend(item for item in overflow if item["code"] not in seen_codes)
+        for item in remainder:
+            if len(selected) >= limit:
+                break
+            selected.append(item)
+            seen_codes.add(str(item["code"]))
+
+    return [{"code": str(item["code"]), "name": str(item["name"])} for item in selected[:limit]]
 
 
 def _load_universe(scope: str, limit: int) -> list[dict[str, str]]:
@@ -57,16 +160,24 @@ def _load_universe(scope: str, limit: int) -> list[dict[str, str]]:
         if cap_col:
             ordered[cap_col] = ordered[cap_col].map(safe_float)
             ordered = ordered.sort_values(by=cap_col, ascending=False)
-        records: list[dict[str, str]] = []
+        records: list[dict[str, Any]] = []
         for _, row in ordered.iterrows():
             code = str(row[code_col]).split(".", 1)[0].zfill(6)
             name = normalize_text(row[name_col])
             if not code or "ST" in name.upper():
                 continue
-            records.append({"code": code, "name": name})
-            if len(records) >= limit:
-                break
-        return records
+            records.append(
+                {
+                    "code": code,
+                    "name": name,
+                    "market_cap": safe_float(row[cap_col]) if cap_col else None,
+                }
+            )
+        if cap_col:
+            layered = _layered_sample_records(records, limit)
+            if layered:
+                return layered
+        return [{"code": item["code"], "name": item["name"]} for item in records[:limit]]
     except Exception:
         fallback = get_all_a_share_stocks()
         records = []
@@ -93,11 +204,22 @@ def _candidate_payload(stock_code: str, company_name: str, scan_data: dict[str, 
     valuation_result = build_three_case_valuation(stock_code, scan_data, opportunity)
     score = gate_result.get("scorecard", {}).get("total", 0)
     signals = gate_result.get("signals", {})
+    valuation_summary = signals.get("valuation_summary", {}) or valuation_result.get("summary", {})
+    position_state = gate_result.get("position_state", "reject")
+    flow_stage = gate_result.get("flow_stage", "latent")
     failed_gates = [
         f"{gate_name}: {gate['reason']}"
         for gate_name, gate in (gate_result.get("gates", {}) or {}).items()
         if gate.get("status") == "fail"
     ]
+    normalized_case = valuation_result.get("normalized_case", valuation_result.get("base_case", {}))
+    recognition_case = valuation_result.get("recognition_case", valuation_result.get("bull_case", {}))
+    next_step = {
+        "attack": "deep dive now",
+        "ready": "promote to attack prep",
+        "cold_storage": "seed and wait for ignition",
+        "harvest": "trim or avoid chasing",
+    }.get(position_state, "keep on watchlist")
     return {
         "ticker": stock_code,
         "company_name": company_name,
@@ -105,12 +227,25 @@ def _candidate_payload(stock_code: str, company_name: str, scan_data: dict[str, 
         "opportunity_type": opportunity.get("primary_label", "Unknown"),
         "score": score,
         "hard_veto": bool(gate_result.get("hard_vetos")),
+        "position_state": position_state,
+        "flow_stage": flow_stage,
+        "repair_state": gate_result.get("repair_state", "none"),
+        "floor_protection": valuation_summary.get("floor_protection"),
+        "normalized_upside": valuation_summary.get("normalized_upside"),
+        "recognition_upside": valuation_summary.get("recognition_upside"),
+        "wind_dependency": valuation_summary.get("wind_dependency"),
         "thesis": opportunity.get("sentence", "No clean thesis."),
-        "mispricing": f"base case {_fmt_price(valuation_result.get('base_case', {}).get('implied_price'))} vs current {_fmt_price(valuation_result.get('current_price'))}",
+        "mispricing": (
+            f"normalized {_fmt_price(normalized_case.get('implied_price'))} / "
+            f"recognition {_fmt_price(recognition_case.get('implied_price'))} vs current {_fmt_price(valuation_result.get('current_price'))}"
+        ),
         "catalysts": signals.get("catalyst", {}).get("catalysts", [])[:3],
         "risks": gate_result.get("hard_vetos", [])[:2] or failed_gates[:3],
-        "why_passed": gate_result.get("gates", {}).get("business_truth", {}).get("reason", "scored best on available evidence"),
-        "next_step": "deep dive now" if not gate_result.get("hard_vetos") and score >= DEFAULTS.get("priority_score_cutoff", 75) else "keep on watchlist",
+        "why_passed": gate_result.get("gates", {}).get("realization_truth", {}).get(
+            "reason",
+            gate_result.get("gates", {}).get("business_or_asset_truth", {}).get("reason", "scored best on available evidence"),
+        ),
+        "next_step": next_step,
         "reason": "; ".join(gate_result.get("hard_vetos", [])[:2] or failed_gates[:2]) or "insufficient edge",
     }
 
@@ -162,6 +297,13 @@ def _prefilter_rejected_payload(
         "opportunity_type": opportunity.get("primary_label", "Unknown"),
         "score": float(partial_gate.get("score_upper_bound", 0.0)),
         "hard_veto": bool(vetoes),
+        "position_state": "reject",
+        "flow_stage": "latent",
+        "repair_state": "none",
+        "floor_protection": None,
+        "normalized_upside": None,
+        "recognition_upside": None,
+        "wind_dependency": None,
         "thesis": opportunity.get("sentence", "No clean thesis."),
         "mispricing": f"safe upper bound {float(partial_gate.get('score_upper_bound', 0.0)):.1f} vs watchlist cutoff {secondary_cutoff:.0f}",
         "catalysts": [],
@@ -287,11 +429,28 @@ def run_radar_scan(
             ranked_with_order.append(result)
 
     ranked_with_order.sort(
-        key=lambda item: (-float(item["payload"].get("score", 0.0)), int(item.get("order_index", 0)))
+        key=lambda item: (
+            _POSITION_STATE_ORDER.get(item["payload"].get("position_state", "reject"), 99),
+            -float(item["payload"].get("score", 0.0)),
+            int(item.get("order_index", 0)),
+        )
     )
     ranked = [item["payload"] for item in ranked_with_order]
-    priority = [item for item in ranked if item["score"] >= priority_cutoff and not item["hard_veto"]]
-    secondary = [item for item in ranked if secondary_cutoff <= item["score"] < priority_cutoff and not item["hard_veto"]]
+    priority = [
+        item
+        for item in ranked
+        if item["score"] >= priority_cutoff
+        and not item["hard_veto"]
+        and item.get("position_state") in {"ready", "attack"}
+    ]
+    secondary = [
+        item
+        for item in ranked
+        if item not in priority
+        and not item["hard_veto"]
+        and item.get("position_state") in {"cold_storage", "ready", "attack", "harvest"}
+        and (item["score"] >= secondary_cutoff or item.get("position_state") == "cold_storage")
+    ]
     rejected = [item for item in ranked if item not in priority and item not in secondary]
 
     if not priority and not secondary:

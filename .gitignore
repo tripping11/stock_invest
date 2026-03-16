@@ -14,6 +14,7 @@ venv/
 .claude/
 .idea/
 .vscode/
+.worktrees/
 
 # Optional vendored dependencies. These contain large binaries that GitHub
 # rejects in normal git pushes unless Git LFS is used.
