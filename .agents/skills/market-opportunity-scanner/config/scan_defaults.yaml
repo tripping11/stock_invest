@@ -8,3 +8,21 @@ defaults:
   radar_retry_delays:
     - 0.5
     - 1.0
+  layered_sampling:
+    buckets:
+      - name: large
+        min_market_cap: 50000000000
+        max_market_cap:
+        target_share: 0.25
+      - name: mid
+        min_market_cap: 15000000000
+        max_market_cap: 50000000000
+        target_share: 0.35
+      - name: small
+        min_market_cap: 5000000000
+        max_market_cap: 15000000000
+        target_share: 0.25
+      - name: micro
+        min_market_cap: 2000000000
+        max_market_cap: 5000000000
+        target_share: 0.15

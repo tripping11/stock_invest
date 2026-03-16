@@ -393,6 +393,11 @@ def _legacy_scorecard_alias(
     verdict = pick_score_verdict(total_score)
     if hard_vetos:
         verdict = {"label": "reject / no action", "action": "hard veto triggered"}
+    legacy_label = {
+        "high conviction / attack candidate": "high conviction / strong candidate",
+        "strong candidate / ready": "reasonable candidate / starter possible",
+        "cold-storage / watchlist": "watch / needs work",
+    }.get(verdict["label"], verdict["label"])
     return {
         "type_clarity": round(type_clarity_score, 2),
         "business_quality": round(business_quality_score, 2),
@@ -403,7 +408,7 @@ def _legacy_scorecard_alias(
         "catalyst": round(catalyst_score, 2),
         "market_structure": round(market_structure_score, 2),
         "total": total_score,
-        "verdict": verdict["label"],
+        "verdict": legacy_label,
         "action": verdict["action"],
     }
 
