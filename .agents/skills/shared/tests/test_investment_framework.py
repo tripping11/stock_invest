@@ -1387,6 +1387,53 @@ class VCRFUniversalGateTests(unittest.TestCase):
         self.assertNotEqual(gate["position_state"], "attack")
 
 
+class VCRFRadarIntegrationTests(unittest.TestCase):
+    def test_radar_coarse_stage_limits_fine_stage_candidate_count(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        with patch.object(radar_scan_engine, "_load_universe", return_value=[{"code": "600348", "name": "测试股份"}]):
+            with patch.object(
+                radar_scan_engine,
+                "_coarse_filter_universe",
+                return_value=[{"code": "600348", "name": "测试股份"}],
+                create=True,
+            ):
+                with patch.object(
+                    radar_scan_engine,
+                    "_scan_one_stock",
+                    return_value={
+                        "kind": "ranked",
+                        "order_index": 0,
+                        "payload": {
+                            "ticker": "600348",
+                            "company_name": "测试股份",
+                            "opportunity_type": "Cyclical",
+                            "score": 78.0,
+                            "hard_veto": False,
+                            "position_state": "ready",
+                            "thesis": "Test thesis",
+                            "mispricing": "base case 12 vs current 10",
+                            "catalysts": [],
+                            "risks": [],
+                            "why_passed": "Test reason",
+                            "next_step": "deep dive now",
+                            "reason": "N/A",
+                        },
+                    },
+                    create=True,
+                ):
+                    with patch.object(radar_scan_engine, "generate_market_scan_report", return_value={"report_path": "report.md"}, create=True):
+                        result = radar_scan_engine.run_radar_scan("A-share", limit=24)
+        self.assertIn("coarse_candidate_count", result)
+        self.assertLessEqual(result["fine_candidate_count"], result["coarse_candidate_count"])
+
+    def test_vcrf_calibrator_reports_axis_quantiles(self) -> None:
+        from engines.vcrf_calibrator import summarize_axis_distribution
+
+        report = summarize_axis_distribution([10, 20, 30, 40, 50])
+        self.assertIn("p50", report)
+        self.assertIn("histogram", report)
+
+
 class VCRFConfigContractTests(unittest.TestCase):
     def test_loaders_expose_vcrf_config_files(self) -> None:
         from utils.config_loader import (

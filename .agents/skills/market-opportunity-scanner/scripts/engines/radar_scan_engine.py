@@ -40,7 +40,83 @@ def _pick_column(columns: list[str], exact: tuple[str, ...], contains: tuple[str
     return None
 
 
-def _load_universe(scope: str, limit: int) -> list[dict[str, str]]:
+def _fmt_price(value: Any) -> str:
+    if value in (None, ""):
+        return "N/A"
+    return f"{float(value):.2f}"
+
+
+def _cap_bucket(market_cap: float | None) -> str:
+    if market_cap is None:
+        return "mid"
+    if market_cap < 5_000_000_000:
+        return "micro"
+    if market_cap < 20_000_000_000:
+        return "small"
+    if market_cap < 50_000_000_000:
+        return "mid"
+    return "large"
+
+
+def _layered_sample(records: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    if len(records) <= limit:
+        return records
+
+    buckets: dict[str, list[dict[str, Any]]] = {"micro": [], "small": [], "mid": [], "large": []}
+    for record in records:
+        turnover = safe_float(record.get("turnover"))
+        if turnover is not None and turnover < 20_000_000:
+            continue
+        buckets[_cap_bucket(safe_float(record.get("market_cap")))].append(record)
+
+    for bucket_name, bucket_records in buckets.items():
+        bucket_records.sort(
+            key=lambda item: (
+                -(safe_float(item.get("turnover")) or 0.0),
+                safe_float(item.get("market_cap")) or (0.0 if bucket_name != "large" else float("inf")),
+            )
+        )
+
+    selection: list[dict[str, Any]] = []
+    bucket_order = ["micro", "small", "small", "mid", "large"]
+    while len(selection) < limit and any(buckets.values()):
+        progressed = False
+        for bucket_name in bucket_order:
+            if not buckets[bucket_name]:
+                continue
+            selection.append(buckets[bucket_name].pop(0))
+            progressed = True
+            if len(selection) >= limit:
+                break
+        if not progressed:
+            break
+
+    if len(selection) < limit:
+        remainder = [item for bucket in buckets.values() for item in bucket]
+        selection.extend(remainder[: limit - len(selection)])
+    return selection[:limit]
+
+
+def _normalize_universe_records(records: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    normalized = []
+    for item in records:
+        code = str(item.get("code", "")).split(".", 1)[0].zfill(6)
+        name = normalize_text(item.get("name", code))
+        if not code:
+            continue
+        normalized.append(
+            {
+                "code": code,
+                "name": name or code,
+                "market_cap": safe_float(item.get("market_cap")),
+                "turnover": safe_float(item.get("turnover")),
+                "special_tags": list(item.get("special_tags", [])),
+            }
+        )
+    return _layered_sample(normalized, limit)
+
+
+def _load_universe(scope: str, limit: int) -> list[dict[str, Any]]:
     code_tokens = [token.strip() for token in scope.split(",") if token.strip()]
     if code_tokens and all(token.replace(".", "").isdigit() for token in code_tokens):
         return [{"code": token.split(".", 1)[0].zfill(6), "name": token.split(".", 1)[0].zfill(6)} for token in code_tokens]
@@ -50,37 +126,58 @@ def _load_universe(scope: str, limit: int) -> list[dict[str, str]]:
         columns = [str(col) for col in df.columns]
         code_col = _pick_column(columns, ("代码", "股票代码"), contains=("代码",))
         name_col = _pick_column(columns, ("名称", "股票简称"), contains=("名称",))
-        cap_col = _pick_column(columns, ("总市值",), contains=("市值",))
+        cap_col = _pick_column(columns, ("总市值",), contains=("市", "值"))
+        turnover_col = _pick_column(columns, ("成交额", "成交额(元)"), contains=("成交", "额"))
         if not code_col or not name_col:
             raise RuntimeError("unable to resolve universe columns from stock_zh_a_spot_em")
-        ordered = df.copy()
-        if cap_col:
-            ordered[cap_col] = ordered[cap_col].map(safe_float)
-            ordered = ordered.sort_values(by=cap_col, ascending=False)
-        records: list[dict[str, str]] = []
-        for _, row in ordered.iterrows():
-            code = str(row[code_col]).split(".", 1)[0].zfill(6)
+
+        records: list[dict[str, Any]] = []
+        for _, row in df.iterrows():
             name = normalize_text(row[name_col])
-            if not code or "ST" in name.upper():
-                continue
-            records.append({"code": code, "name": name})
-            if len(records) >= limit:
-                break
-        return records
+            special_tags = ["special_situation"] if "ST" in name.upper() else []
+            records.append(
+                {
+                    "code": str(row[code_col]).split(".", 1)[0].zfill(6),
+                    "name": name,
+                    "market_cap": safe_float(row[cap_col]) if cap_col else None,
+                    "turnover": safe_float(row[turnover_col]) if turnover_col else None,
+                    "special_tags": special_tags,
+                }
+            )
+        return _normalize_universe_records(records, limit)
     except Exception:
         fallback = get_all_a_share_stocks()
         records = []
         for row in fallback.get("data", []):
-            code = str(row.get("code", "")).split(".", 1)[0].zfill(6)
             name = normalize_text(row.get("name", ""))
-            if not code or "ST" in name.upper():
-                continue
-            records.append({"code": code, "name": name})
-            if len(records) >= limit:
-                break
+            records.append(
+                {
+                    "code": str(row.get("code", "")).split(".", 1)[0].zfill(6),
+                    "name": name,
+                    "market_cap": None,
+                    "turnover": None,
+                    "special_tags": ["special_situation"] if "ST" in name.upper() else [],
+                }
+            )
         if records:
-            return records
+            return _normalize_universe_records(records, limit)
         raise
+
+
+def _coarse_filter_universe(universe: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    if len(universe) <= limit:
+        return universe
+
+    coarse_limit = min(len(universe), max(limit * 4, limit))
+    ordered = sorted(
+        universe,
+        key=lambda item: (
+            len(item.get("special_tags", [])),
+            -(safe_float(item.get("turnover")) or 0.0),
+            safe_float(item.get("market_cap")) or float("inf"),
+        ),
+    )
+    return ordered[:coarse_limit]
 
 
 def _candidate_payload(stock_code: str, company_name: str, scan_data: dict[str, Any]) -> dict[str, Any]:
@@ -90,7 +187,7 @@ def _candidate_payload(stock_code: str, company_name: str, scan_data: dict[str, 
         revenue_records=scan_data.get("revenue_breakdown", {}).get("data", []),
     )
     gate_result = evaluate_universal_gates(stock_code, scan_data, opportunity_context=opportunity)
-    valuation_result = build_three_case_valuation(stock_code, scan_data, opportunity)
+    valuation_result = build_three_case_valuation(stock_code, scan_data, gate_result.get("driver_stack", opportunity))
     score = gate_result.get("scorecard", {}).get("total", 0)
     signals = gate_result.get("signals", {})
     failed_gates = [
@@ -103,22 +200,24 @@ def _candidate_payload(stock_code: str, company_name: str, scan_data: dict[str, 
         "company_name": company_name,
         "market": "A-share",
         "opportunity_type": opportunity.get("primary_label", "Unknown"),
+        "primary_type": gate_result.get("driver_stack", {}).get("primary_type", opportunity.get("primary_type")),
+        "sector_route": gate_result.get("driver_stack", {}).get("sector_route"),
         "score": score,
         "hard_veto": bool(gate_result.get("hard_vetos")),
+        "position_state": gate_result.get("position_state", "reject"),
+        "prev_state": gate_result.get("prev_state", "NEW"),
+        "flow_stage": gate_result.get("flow_stage", "latent"),
         "thesis": opportunity.get("sentence", "No clean thesis."),
         "mispricing": f"base case {_fmt_price(valuation_result.get('base_case', {}).get('implied_price'))} vs current {_fmt_price(valuation_result.get('current_price'))}",
+        "floor_protection": valuation_result.get("summary", {}).get("floor_protection"),
+        "normalized_upside": valuation_result.get("summary", {}).get("normalized_upside"),
+        "recognition_upside": valuation_result.get("summary", {}).get("recognition_upside"),
         "catalysts": signals.get("catalyst", {}).get("catalysts", [])[:3],
         "risks": gate_result.get("hard_vetos", [])[:2] or failed_gates[:3],
         "why_passed": gate_result.get("gates", {}).get("business_truth", {}).get("reason", "scored best on available evidence"),
-        "next_step": "deep dive now" if not gate_result.get("hard_vetos") and score >= DEFAULTS.get("priority_score_cutoff", 75) else "keep on watchlist",
+        "next_step": "deep dive now" if gate_result.get("position_state") in {"ready", "attack"} else "keep on watchlist",
         "reason": "; ".join(gate_result.get("hard_vetos", [])[:2] or failed_gates[:2]) or "insufficient edge",
     }
-
-
-def _fmt_price(value: Any) -> str:
-    if value in (None, ""):
-        return "N/A"
-    return f"{float(value):.2f}"
 
 
 def _fields_to_fetch_from_partial_gate(partial_gate: dict[str, Any]) -> list[str]:
@@ -162,8 +261,14 @@ def _prefilter_rejected_payload(
         "opportunity_type": opportunity.get("primary_label", "Unknown"),
         "score": float(partial_gate.get("score_upper_bound", 0.0)),
         "hard_veto": bool(vetoes),
+        "position_state": "reject",
+        "prev_state": "NEW",
+        "flow_stage": "latent",
         "thesis": opportunity.get("sentence", "No clean thesis."),
         "mispricing": f"safe upper bound {float(partial_gate.get('score_upper_bound', 0.0)):.1f} vs watchlist cutoff {secondary_cutoff:.0f}",
+        "floor_protection": None,
+        "normalized_upside": None,
+        "recognition_upside": None,
         "catalysts": [],
         "risks": vetoes[:2] or partial_gate.get("blocked_hard_vetos", [])[:2],
         "why_passed": "prefilter reject",
@@ -251,10 +356,11 @@ def run_radar_scan(
     max_workers_override: int | None = None,
 ) -> dict[str, Any]:
     max_universe = int(limit or DEFAULTS.get("max_universe_size", 24))
-    universe = [
-        {**item, "order_index": index}
-        for index, item in enumerate(_load_universe(scope, max_universe))
-    ]
+    coarse_limit = max(max_universe, min(max_universe * 4, 400))
+    raw_universe = _load_universe(scope, coarse_limit)
+    coarse_universe = _coarse_filter_universe(raw_universe, max_universe)
+    universe = [{**item, "order_index": index} for index, item in enumerate(coarse_universe)]
+
     report_dir = BASE_DIR / "reports"
     processed_dir = BASE_DIR / "data" / "processed" / "market_scan"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -283,15 +389,24 @@ def run_radar_scan(
             for item in universe
         ]
         for future in as_completed(futures):
-            result = future.result()
-            ranked_with_order.append(result)
+            ranked_with_order.append(future.result())
 
-    ranked_with_order.sort(
-        key=lambda item: (-float(item["payload"].get("score", 0.0)), int(item.get("order_index", 0)))
-    )
+    ranked_with_order.sort(key=lambda item: (-float(item["payload"].get("score", 0.0)), int(item.get("order_index", 0))))
     ranked = [item["payload"] for item in ranked_with_order]
-    priority = [item for item in ranked if item["score"] >= priority_cutoff and not item["hard_veto"]]
-    secondary = [item for item in ranked if secondary_cutoff <= item["score"] < priority_cutoff and not item["hard_veto"]]
+    priority = [
+        item
+        for item in ranked
+        if item.get("position_state") in {"ready", "attack"}
+        and not item.get("hard_veto")
+        and float(item.get("score", 0.0)) >= priority_cutoff
+    ]
+    secondary = [
+        item
+        for item in ranked
+        if item.get("position_state") in {"cold_storage", "ready", "attack"}
+        and item not in priority
+        and not item.get("hard_veto")
+    ]
     rejected = [item for item in ranked if item not in priority and item not in secondary]
 
     if not priority and not secondary:
@@ -305,7 +420,7 @@ def run_radar_scan(
 
     report = generate_market_scan_report(
         market="A-share",
-        scope_text=f"{scope} (practical tradable sample size={len(universe)})",
+        scope_text=f"{scope} (raw={len(raw_universe)}, coarse={len(universe)}, fine={len(ranked)})",
         results_summary=summary,
         priority_shortlist=priority,
         secondary_watchlist=secondary,
@@ -314,7 +429,9 @@ def run_radar_scan(
     )
     payload = {
         "scope": scope,
-        "universe_size": len(universe),
+        "universe_size": len(raw_universe),
+        "coarse_candidate_count": len(universe),
+        "fine_candidate_count": len(ranked),
         "summary": summary,
         "ranked": ranked,
         "priority_shortlist": priority,
