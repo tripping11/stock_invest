@@ -31,6 +31,7 @@ from utils.value_utils import (  # noqa: F401
     safe_float,
     select_latest_record,
 )
+from utils.vcrf_probes import assess_survival_boundary, detect_big_bath, score_underwrite_axis  # noqa: F401
 
 
 CACHE_STALE_HOURS = 24
@@ -49,6 +50,7 @@ __all__ = [
     "assess_bottom_pattern",
     "assess_business_purity",
     "classify_state_ownership",
+    "detect_big_bath",
     "extract_latest_revenue_snapshot",
     "extract_latest_revenue_terms",
     "extract_market_cap",
@@ -65,7 +67,9 @@ __all__ = [
     "now_ts",
     "resolve_sector_route",
     "safe_float",
+    "score_underwrite_axis",
     "select_latest_record",
+    "assess_survival_boundary",
 ]
 
 
