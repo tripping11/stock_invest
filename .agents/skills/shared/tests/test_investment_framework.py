@@ -1434,6 +1434,52 @@ class VCRFRadarIntegrationTests(unittest.TestCase):
         self.assertIn("histogram", report)
 
 
+class VCRFEndToEndSmokeTests(unittest.TestCase):
+    def test_synthetic_candidate_flows_through_driver_stack_gate_and_valuation_contract(self) -> None:
+        synthetic_scan_data = {
+            "company_profile": {"data": {"行业": "煤炭", "主营业务": "煤炭开采与销售", "实际控制人": "国务院国资委", "股票简称": "合成样本"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": "煤炭", "主营收入": 88, "收入比例": 88}]},
+            "valuation_history": {"data": {"pb": 0.82, "pb_percentile": 15}},
+            "stock_kline": {
+                "data": {
+                    "current_vs_5yr_high": 46,
+                    "latest_close": 9.5,
+                    "volume_ratio_20_vs_120": 1.5,
+                    "drawdown_from_5yr_high_pct": 48,
+                    "low_5y": 7.8,
+                    "avg_turnover_1y": 620_000_000,
+                }
+            },
+            "realtime_quote": {"data": {"最新价": 9.5, "总市值": 12_000_000_000}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 180_000_000}]},
+            "balance_sheet": {
+                "data": [
+                    {
+                        "报告期": "20241231",
+                        "归属于母公司所有者权益合计": 2_100_000_000,
+                        "资产总计": 4_500_000_000,
+                        "货币资金": 900_000_000,
+                        "短期借款": 200_000_000,
+                    }
+                ]
+            },
+            "cashflow_statement": {"data": [{"报告期": "20241231", "经营活动产生的现金流量净额": 320_000_000}]},
+            "shareholder_count": {"data": [{"股东户数": 110_000}, {"股东户数": 125_000}]},
+            "event_signals": {"buyback": True},
+        }
+
+        result = evaluate_universal_gates("600348", synthetic_scan_data, prior_state="NEW")
+        valuation = build_three_case_valuation("600348", synthetic_scan_data, result["driver_stack"])
+
+        self.assertIn("driver_stack", result)
+        self.assertIn("underwrite_axis", result)
+        self.assertIn("realization_axis", result)
+        self.assertIn("position_state", result)
+        self.assertIn("floor_case", valuation)
+        self.assertIn("normalized_case", valuation)
+        self.assertIn("recognition_case", valuation)
+
+
 class VCRFConfigContractTests(unittest.TestCase):
     def test_loaders_expose_vcrf_config_files(self) -> None:
         from utils.config_loader import (
