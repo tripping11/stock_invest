@@ -1336,5 +1336,37 @@ class VCRFGateAndRadarTests(unittest.TestCase):
         self.assertNotEqual(codes, top_6_by_cap, "Universe should not be pure top-cap slice")
 
 
+class VCRFConfigContractTests(unittest.TestCase):
+    def test_loaders_expose_vcrf_config_files(self) -> None:
+        from utils.config_loader import (
+            load_vcrf_degradation,
+            load_vcrf_state_machine,
+            load_vcrf_weights,
+        )
+
+        self.assertIn("base_templates", load_vcrf_weights())
+        self.assertIn("allowed_transitions", load_vcrf_state_machine())
+        self.assertIn("degradation_rules", load_vcrf_degradation())
+
+    def test_all_weight_templates_normalize_after_sector_overrides(self) -> None:
+        from utils.config_loader import resolve_vcrf_weight_template
+
+        primary_types = ["compounder", "cyclical", "turnaround", "asset_play", "special_situation"]
+        routes = ["core_resource", "rigid_shovel", "core_military", "financial_asset", "consumer", "tech", "unknown"]
+        for primary_type in primary_types:
+            for route in routes:
+                template = resolve_vcrf_weight_template(primary_type, route)
+                self.assertAlmostEqual(sum(template["underwrite"].values()), 1.0, places=3)
+                self.assertAlmostEqual(sum(template["realization"].values()), 1.0, places=3)
+
+    def test_state_machine_config_includes_new_state_and_harvest_candidate_rules(self) -> None:
+        from utils.config_loader import load_vcrf_state_machine
+
+        cfg = load_vcrf_state_machine()
+        self.assertIn("NEW", cfg["allowed_transitions"])
+        self.assertIn("harvest_candidate", cfg)
+        self.assertEqual(cfg["harvest_candidate"]["consecutive_closes_above_recognition"], 3)
+
+
 if __name__ == "__main__":
     unittest.main()
