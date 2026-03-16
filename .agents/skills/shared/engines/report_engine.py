@@ -54,10 +54,41 @@ def _fmt_pct(value: Any) -> str:
     return f"{float(value) * 100:.1f}%"
 
 
-def _fmt_num(value: Any) -> str:
-    if value in (None, ""):
-        return "N/A"
-    return f"{float(value):,.2f}"
+def _fmt_text_list(values: list[Any]) -> str:
+    rendered = [str(value) for value in values if value not in (None, "")]
+    return ", ".join(rendered) if rendered else "N/A"
+
+
+def _company_business_text(scan_data: dict[str, Any]) -> str:
+    profile = scan_data.get("company_profile", {}).get("data", {}) or {}
+    for key in ("主营业务", "经营范围", "涓昏惀涓氬姟", "缁忚惀鑼冨洿"):
+        value = normalize_text(profile.get(key))
+        if value:
+            return value
+    return "N/A"
+
+
+def _modifier_summary(driver_stack: dict[str, Any], flow_stage: str) -> str:
+    modifiers = driver_stack.get("modifiers", {}) or {}
+    parts = []
+    for label, value in (
+        ("cycle", modifiers.get("cycle_state")),
+        ("repair", modifiers.get("repair_state")),
+        ("path", modifiers.get("realization_path")),
+        ("flow", flow_stage or modifiers.get("flow_stage")),
+        ("elasticity", modifiers.get("elasticity_bucket")),
+    ):
+        if value not in (None, ""):
+            parts.append(f"{label}={value}")
+    return ", ".join(parts) if parts else "No driver modifiers yet."
+
+
+def _valuation_summary_aliases(valuation_result: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    summary = valuation_result.get("summary", {}) or {}
+    floor_case = valuation_result.get("floor_case", valuation_result.get("bear_case", {}))
+    normalized_case = valuation_result.get("normalized_case", valuation_result.get("base_case", {}))
+    recognition_case = valuation_result.get("recognition_case", valuation_result.get("bull_case", {}))
+    return floor_case or {}, normalized_case or {}, recognition_case or {}, summary
 
 
 def generate_deep_dive_report(
@@ -72,12 +103,24 @@ def generate_deep_dive_report(
     report_dir: str,
 ) -> dict[str, Any]:
     dimension_max = _load_dimension_max()
-    opportunity = gate_result.get("opportunity_context", {})
-    scorecard = gate_result.get("scorecard", {})
-    signals = gate_result.get("signals", {})
-    gates = gate_result.get("gates", {})
+    opportunity = gate_result.get("opportunity_context", {}) or {}
+    driver_stack = gate_result.get("driver_stack", {}) or {}
+    underwrite_axis = gate_result.get("underwrite_axis", {}) or {}
+    realization_axis = gate_result.get("realization_axis", {}) or {}
+    scorecard = gate_result.get("scorecard", {}) or {}
+    signals = gate_result.get("signals", {}) or {}
+    gates = gate_result.get("gates", {}) or {}
     current_price = valuation_result.get("current_price")
-    hard_vetos = gate_result.get("hard_vetos", [])
+    hard_vetos = gate_result.get("hard_vetos", []) or []
+    position_state = gate_result.get("position_state", "unknown")
+    prev_state = gate_result.get("prev_state", "NEW")
+    transition_reason = gate_result.get("transition_reason", "No transition metadata.")
+    flow_stage = gate_result.get("flow_stage", (driver_stack.get("modifiers", {}) or {}).get("flow_stage", "unknown"))
+    floor_case, normalized_case, recognition_case, valuation_summary = _valuation_summary_aliases(valuation_result)
+    margin_of_safety = valuation_summary.get("margin_of_safety")
+    if margin_of_safety is None and valuation_summary.get("floor_protection") is not None:
+        margin_of_safety = valuation_summary.get("floor_protection") - 1
+    priced_state = valuation_summary.get("priced_in", valuation_summary.get("priced_state", "unknown"))
     report_path = Path(report_dir) / f"{stock_code}_{company_name}_deep_dive.md"
 
     lines = [
@@ -90,6 +133,9 @@ def generate_deep_dive_report(
         f"- primary type: {opportunity.get('primary_label', 'Unknown')}",
         f"- one-sentence thesis: {opportunity.get('sentence', 'No clean thesis yet.')}",
         f"- current conclusion: {scorecard.get('verdict', 'reject / no action')}",
+        f"- sector route: {driver_stack.get('sector_route', opportunity.get('sector_route', 'unknown'))}",
+        f"- position state: {position_state}",
+        f"- state transition: {prev_state} -> {position_state} ({transition_reason})",
         "",
         "## 2. Why this stock may be mispriced",
         f"- what the market likely sees: {' '.join(synthesis_result.get('market_perception', []))}",
@@ -99,10 +145,11 @@ def generate_deep_dive_report(
         "## 3. Opportunity type",
         f"- primary type: {opportunity.get('primary_label', 'Unknown')}",
         f"- why this is the right type: {opportunity.get('reason', 'Type signal is weak.')}",
-        f"- why the other types are secondary or not primary: {', '.join(opportunity.get('secondary_types', [])) or 'No strong secondary type surfaced.'}",
+        f"- why the other types are secondary or not primary: {_fmt_text_list(opportunity.get('secondary_types', []))}",
+        f"- VCRF driver modifiers: {_modifier_summary(driver_stack, flow_stage)}",
         "",
         "## 4. Business truth",
-        f"- business model: {normalize_text(scan_data.get('company_profile', {}).get('data', {}).get('主营业务')) or 'N/A'}",
+        f"- business model: {_company_business_text(scan_data)}",
         f"- revenue and profit engine: dominant segment is {signals.get('purity', {}).get('top_segment') or 'unclear'}",
         f"- key operating drivers: {signals.get('moat', {}).get('reason', 'No durable edge surfaced.')}",
         f"- what must go right: {gates.get('business_truth', {}).get('reason', 'Need clearer business evidence.')}",
@@ -115,7 +162,7 @@ def generate_deep_dive_report(
         "## 6. Quality truth",
         f"- moat / advantage: {signals.get('moat', {}).get('reason', 'No moat claim yet.')}",
         f"- management and capital allocation: {signals.get('management', {}).get('verdict', 'unknown')}",
-        f"- governance issues: {', '.join(signals.get('management', {}).get('red_flags', [])) or 'None surfaced from current text.'}",
+        f"- governance issues: {_fmt_text_list(signals.get('management', {}).get('red_flags', []))}",
         f"- return and cash flow quality: {gates.get('quality_truth', {}).get('reason', 'Mixed quality signal.')}",
         "",
         "## 7. Regime / cycle truth",
@@ -125,30 +172,39 @@ def generate_deep_dive_report(
         f"- timing implications: status={gates.get('regime_cycle_truth', {}).get('status', 'unknown')}",
         "",
         "## 8. Valuation truth",
+        f"- dual-axis snapshot: underwrite={underwrite_axis.get('score', 'N/A')}, realization={realization_axis.get('score', 'N/A')}, flow_stage={flow_stage}",
+        f"- VCRF floor protection: {_fmt_pct(valuation_summary.get('floor_protection'))}",
+        f"- VCRF normalized upside: {_fmt_pct(valuation_summary.get('normalized_upside'))}",
+        f"- VCRF recognition upside: {_fmt_pct(valuation_summary.get('recognition_upside'))}",
+        f"- wind dependency: {_fmt_pct(valuation_summary.get('wind_dependency'))}",
+        "",
         "### Bear case",
-        f"- assumptions: {', '.join(valuation_result.get('bear_case', {}).get('assumptions', [])) or 'N/A'}",
-        f"- valuation method: {valuation_result.get('bear_case', {}).get('valuation_method', 'N/A')}",
-        f"- implied value range: {_fmt_price(valuation_result.get('bear_case', {}).get('implied_price'))}",
+        "- VCRF alias: floor_case",
+        f"- assumptions: {_fmt_text_list(floor_case.get('assumptions', []))}",
+        f"- valuation method: {floor_case.get('valuation_method', 'N/A')}",
+        f"- implied value range: {_fmt_price(floor_case.get('implied_price'))}",
         "",
         "### Base / normal case",
-        f"- assumptions: {', '.join(valuation_result.get('base_case', {}).get('assumptions', [])) or 'N/A'}",
-        f"- valuation method: {valuation_result.get('base_case', {}).get('valuation_method', 'N/A')}",
-        f"- implied value range: {_fmt_price(valuation_result.get('base_case', {}).get('implied_price'))}",
+        "- VCRF alias: normalized_case",
+        f"- assumptions: {_fmt_text_list(normalized_case.get('assumptions', []))}",
+        f"- valuation method: {normalized_case.get('valuation_method', 'N/A')}",
+        f"- implied value range: {_fmt_price(normalized_case.get('implied_price'))}",
         "",
         "### Bull case",
-        f"- assumptions: {', '.join(valuation_result.get('bull_case', {}).get('assumptions', [])) or 'N/A'}",
-        f"- valuation method: {valuation_result.get('bull_case', {}).get('valuation_method', 'N/A')}",
-        f"- implied value range: {_fmt_price(valuation_result.get('bull_case', {}).get('implied_price'))}",
+        "- VCRF alias: recognition_case",
+        f"- assumptions: {_fmt_text_list(recognition_case.get('assumptions', []))}",
+        f"- valuation method: {recognition_case.get('valuation_method', 'N/A')}",
+        f"- implied value range: {_fmt_price(recognition_case.get('implied_price'))}",
         "",
-        f"- current price versus conservative value: current={_fmt_price(current_price)}, base={_fmt_price(valuation_result.get('base_case', {}).get('implied_price'))}",
-        f"- margin of safety: {_fmt_pct(valuation_result.get('summary', {}).get('margin_of_safety'))}",
-        f"- what expectations are priced in: {valuation_result.get('summary', {}).get('priced_in', 'unknown')}",
+        f"- current price versus conservative value: current={_fmt_price(current_price)}, base={_fmt_price(normalized_case.get('implied_price'))}",
+        f"- margin of safety: {_fmt_pct(margin_of_safety)}",
+        f"- what expectations are priced in: {priced_state}",
         "",
         "## 9. Catalyst truth",
-        f"- near-term catalysts: {', '.join(signals.get('catalyst', {}).get('catalysts', [])[:2]) or 'None explicit'}",
-        f"- medium-term catalysts: {', '.join(signals.get('catalyst', {}).get('catalysts', [])[2:]) or 'Need stronger value-unlock path'}",
+        f"- near-term catalysts: {_fmt_text_list((signals.get('catalyst', {}) or {}).get('catalysts', [])[:2])}",
+        f"- medium-term catalysts: {_fmt_text_list((signals.get('catalyst', {}) or {}).get('catalysts', [])[2:])}",
         f"- what can unlock value: {signals.get('catalyst', {}).get('reason', 'No concrete catalyst surfaced.')}",
-        f"- what can delay value realization: weak catalyst truth or failing survival/business gates",
+        "- what can delay value realization: weak catalyst truth or failing survival/business gates",
         "",
         "## 10. Anti-thesis",
     ]
@@ -160,6 +216,10 @@ def generate_deep_dive_report(
             *[f"- {item}" for item in synthesis_result.get("falsification_points", [])],
             "",
             "## 12. Scorecard",
+            f"- underwrite axis: {underwrite_axis.get('score', 'N/A')}/100",
+            f"- realization axis: {realization_axis.get('score', 'N/A')}/100",
+            f"- position state: {position_state}",
+            f"- flow stage: {flow_stage}",
             f"- type clarity: {scorecard.get('type_clarity', 'N/A')}/{int(dimension_max['type_clarity'])}",
             f"- business quality: {scorecard.get('business_quality', 'N/A')}/{int(dimension_max['business_quality'])}",
             f"- survival: {scorecard.get('survival', 'N/A')}/{int(dimension_max['survival'])}",
@@ -171,8 +231,8 @@ def generate_deep_dive_report(
             f"- total: {scorecard.get('total', 'N/A')}/100",
             "",
             "## 13. Action plan",
-            f"- ideal buy zone: below bear/base midpoint if the thesis remains intact",
-            f"- starter zone: {_fmt_price(valuation_result.get('base_case', {}).get('implied_price'))} or below with improving evidence",
+            "- ideal buy zone: below bear/base midpoint if the thesis remains intact",
+            f"- starter zone: {_fmt_price(normalized_case.get('implied_price'))} or below with improving evidence",
             "- add conditions: better survival evidence, clearer catalyst, or stronger valuation gap",
             "- trim conditions: price reaches or exceeds base-to-bull range without evidence upgrade",
             "- exit conditions: hard veto appears or falsification points trigger",

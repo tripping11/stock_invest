@@ -30,6 +30,10 @@ def _case_payload(method: str, assumptions: list[str], equity_value: float | Non
     }
 
 
+def _empty_case(method: str, assumption: str) -> dict[str, Any]:
+    return _case_payload(method, [assumption], None, None)
+
+
 def _resolve_route_anchor(discipline: dict[str, Any], sector_route: str, primary_type: str) -> tuple[str, str]:
     route_methods = discipline.get("route_methods", {}) or {}
     route_key = sector_route or "unknown"
@@ -144,6 +148,91 @@ def build_three_case_valuation(
     latest_balance = get_latest_balance_snapshot(scan_data.get("balance_sheet", {}).get("data", []))
     profit = latest_income.get("net_profit")
     equity = latest_balance.get("total_equity")
+    route_methods = discipline.get("route_methods", {}) or {}
+
+    if primary_type == "unknown":
+        floor_case = _empty_case("unavailable", "unknown opportunity type")
+        normalized_case = _empty_case("unavailable", "unknown opportunity type")
+        recognition_case = _empty_case("unavailable", "unknown opportunity type")
+        return {
+            "stock_code": stock_code,
+            "primary_type": primary_type,
+            "sector_route": sector_route or "unknown",
+            "route_anchor": "unavailable",
+            "current_price": current_price,
+            "market_cap": market_cap,
+            "share_count": share_count,
+            "floor_case": floor_case,
+            "normalized_case": normalized_case,
+            "recognition_case": recognition_case,
+            "summary": {
+                "floor_protection": None,
+                "normalized_upside": None,
+                "recognition_upside": None,
+                "wind_dependency": None,
+                "priced_state": "unknown",
+                "priced_in": "unknown",
+            },
+            "bear_case": floor_case,
+            "base_case": normalized_case,
+            "bull_case": recognition_case,
+        }
+
+    if primary_type == "compounder" and sector_route in ("", "unknown") and profit is None:
+        floor_case = _empty_case("unavailable", "missing normalized earnings anchor")
+        normalized_case = _empty_case("unavailable", "missing normalized earnings anchor")
+        recognition_case = _empty_case("unavailable", "missing normalized earnings anchor")
+        return {
+            "stock_code": stock_code,
+            "primary_type": primary_type,
+            "sector_route": sector_route or "unknown",
+            "route_anchor": "compounder_missing_profit",
+            "current_price": current_price,
+            "market_cap": market_cap,
+            "share_count": share_count,
+            "floor_case": floor_case,
+            "normalized_case": normalized_case,
+            "recognition_case": recognition_case,
+            "summary": {
+                "floor_protection": None,
+                "normalized_upside": None,
+                "recognition_upside": None,
+                "wind_dependency": None,
+                "priced_state": "unknown",
+                "priced_in": "unknown",
+            },
+            "bear_case": floor_case,
+            "base_case": normalized_case,
+            "bull_case": recognition_case,
+        }
+
+    if not route_methods and sector_route in ("", "unknown") and primary_type == "cyclical":
+        floor_case = _empty_case("unavailable", "missing valuation discipline route methods")
+        normalized_case = _empty_case("unavailable", "missing valuation discipline route methods")
+        recognition_case = _empty_case("unavailable", "missing valuation discipline route methods")
+        return {
+            "stock_code": stock_code,
+            "primary_type": primary_type,
+            "sector_route": sector_route or "unknown",
+            "route_anchor": "missing_route_methods",
+            "current_price": current_price,
+            "market_cap": market_cap,
+            "share_count": share_count,
+            "floor_case": floor_case,
+            "normalized_case": normalized_case,
+            "recognition_case": recognition_case,
+            "summary": {
+                "floor_protection": None,
+                "normalized_upside": None,
+                "recognition_upside": None,
+                "wind_dependency": None,
+                "priced_state": "unknown",
+                "priced_in": "unknown",
+            },
+            "bear_case": floor_case,
+            "base_case": normalized_case,
+            "bull_case": recognition_case,
+        }
 
     resolved_route, route_anchor = _resolve_route_anchor(discipline, sector_route, primary_type)
     floor_case = _build_floor_case(resolved_route, equity, profit, share_count)
@@ -178,6 +267,7 @@ def build_three_case_valuation(
             "recognition_upside": round(recognition_upside, 4) if recognition_upside is not None else None,
             "wind_dependency": round(wind_dependency, 4) if wind_dependency is not None else None,
             "priced_state": "optimistic" if normalized_upside is not None and normalized_upside < 0 else "conservative_to_fair",
+            "priced_in": "optimistic" if normalized_upside is not None and normalized_upside < 0 else "conservative_to_fair",
         },
         "bear_case": floor_case,
         "base_case": normalized_case,
