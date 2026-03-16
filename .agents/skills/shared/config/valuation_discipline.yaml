@@ -72,3 +72,19 @@ compatibility_defaults:
     rebound_from_60d_low_pct: 0.08
     above_avg20_pct: 0.02
     return_20d_pct: 0.05
+
+route_methods:
+  core_resource:
+    normalized_anchor: core_resource_mid_cycle
+  rigid_shovel:
+    normalized_anchor: rigid_shovel_capex_mid_cycle
+  core_military:
+    normalized_anchor: core_military_margin_anchor
+  consumer:
+    normalized_anchor: consumer_owner_earnings_anchor
+  tech:
+    normalized_anchor: tech_owner_earnings_anchor
+  financial_asset:
+    normalized_anchor: financial_asset_mid_cycle_roe
+  unknown:
+    normalized_anchor: conservative_fallback

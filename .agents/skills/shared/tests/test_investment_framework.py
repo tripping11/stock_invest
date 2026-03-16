@@ -1437,5 +1437,46 @@ class VCRFDriverStackTests(unittest.TestCase):
         self.assertEqual(adjusted, "COLD_STORAGE")
 
 
+class VCRFRealizationEngineTests(unittest.TestCase):
+    def test_realization_axis_returns_all_six_components(self) -> None:
+        from engines.flow_realization_engine import score_realization_axis
+
+        result = score_realization_axis(scan_data={}, driver_stack={})
+        self.assertEqual(
+            set(result["components"].keys()),
+            {
+                "repair_state",
+                "regime_cycle_position",
+                "marginal_buyer_probability",
+                "flow_confirmation",
+                "elasticity",
+                "catalyst_quality",
+            },
+        )
+
+    def test_attack_book_monitor_requires_price_and_flow_confirmation(self) -> None:
+        from engines.attack_book_monitor import evaluate_harvest_candidate
+
+        result = evaluate_harvest_candidate(
+            closes=[10.1, 10.2, 10.3],
+            recognition_price=10.0,
+            daily_returns=[0.01, 0.01, 0.01],
+            flow_stage="trend",
+            cfg={"consecutive_closes_above_recognition": 3, "require_flow_stage_deterioration_to": "crowded"},
+        )
+        self.assertFalse(result["harvest_candidate"])
+
+
+class VCRFValuationRouteTests(unittest.TestCase):
+    def test_normalized_case_depends_on_sector_route_not_primary_type_only(self) -> None:
+        scan_data = VCRFValuationContractTests()._cyclical_scan_data()
+        valuation = build_three_case_valuation(
+            "600348",
+            scan_data,
+            {"sector_route": "core_resource", "primary_type": "cyclical"},
+        )
+        self.assertEqual(valuation["route_anchor"], "core_resource_mid_cycle")
+
+
 if __name__ == "__main__":
     unittest.main()
