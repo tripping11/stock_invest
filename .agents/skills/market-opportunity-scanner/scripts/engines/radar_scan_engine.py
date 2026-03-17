@@ -5,6 +5,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import datetime
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,10 +23,11 @@ from adapters.baostock_adapter import get_all_a_share_stocks  # noqa: E402
 from engines.report_engine import generate_market_scan_report  # noqa: E402
 from engines.valuation_engine import build_three_case_valuation  # noqa: E402
 from utils.framework_utils import determine_opportunity_type, normalize_text, safe_float  # noqa: E402
+from utils.runtime_paths import market_scan_paths, resolve_base_dir  # noqa: E402
 from validators.universal_gate import evaluate_partial_gate_dimensions, evaluate_universal_gates  # noqa: E402
 
 
-BASE_DIR = Path(__file__).resolve().parents[5]
+BASE_DIR = resolve_base_dir()
 with open(SKILLS_DIR / "market-opportunity-scanner" / "config" / "scan_defaults.yaml", "r", encoding="utf-8") as handle:
     DEFAULTS = (yaml.safe_load(handle) or {}).get("defaults", {})
 
@@ -278,11 +280,11 @@ def _prefilter_rejected_payload(
     }
 
 
-def _init_radar_day_cache_dir(trade_date: str, enabled: bool) -> Path | None:
+def _init_radar_day_cache_dir(trade_date: str, enabled: bool, *, base_dir: Path) -> Path | None:
     if not enabled:
         return None
 
-    cache_dir = BASE_DIR / "data" / "processed" / "radar_cache" / trade_date
+    cache_dir = market_scan_paths(base_dir)["radar_cache_root"] / trade_date
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     meta_path = cache_dir / "_meta.json"
@@ -354,16 +356,23 @@ def run_radar_scan(
     scope: str = "A-share",
     limit: int | None = None,
     *,
+    base_dir: str | Path | None = None,
     max_workers_override: int | None = None,
 ) -> dict[str, Any]:
+    resolved_base_dir = (
+        resolve_base_dir(base_dir)
+        if base_dir is not None or os.getenv("A_STOCK_BASE")
+        else BASE_DIR
+    )
     max_universe = int(limit or DEFAULTS.get("max_universe_size", 24))
     coarse_limit = max(max_universe, min(max_universe * 4, 400))
     raw_universe = _load_universe(scope, coarse_limit)
     coarse_universe = _coarse_filter_universe(raw_universe, max_universe)
     universe = [{**item, "order_index": index} for index, item in enumerate(coarse_universe)]
 
-    report_dir = BASE_DIR / "reports"
-    processed_dir = BASE_DIR / "data" / "processed" / "market_scan"
+    paths = market_scan_paths(resolved_base_dir)
+    report_dir = paths["report_dir"]
+    processed_dir = paths["processed_dir"]
     report_dir.mkdir(parents=True, exist_ok=True)
     processed_dir.mkdir(parents=True, exist_ok=True)
 
@@ -373,6 +382,7 @@ def run_radar_scan(
     day_cache_dir = _init_radar_day_cache_dir(
         trade_date,
         enabled=bool(DEFAULTS.get("radar_day_cache_enabled", True)),
+        base_dir=resolved_base_dir,
     )
     retry_delays = tuple(float(item) for item in DEFAULTS.get("radar_retry_delays", [0.5, 1.0]))
     max_workers = max(1, int(max_workers_override or DEFAULTS.get("radar_max_workers", 4)))
@@ -448,8 +458,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the market opportunity scanner.")
     parser.add_argument("scope", nargs="?", default="A-share")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--base-dir", type=Path, default=None)
     args = parser.parse_args()
-    result = run_radar_scan(args.scope, args.limit)
+    result = run_radar_scan(args.scope, args.limit, base_dir=args.base_dir)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

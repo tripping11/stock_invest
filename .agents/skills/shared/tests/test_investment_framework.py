@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -1620,6 +1621,172 @@ class VCRFValuationRouteTests(unittest.TestCase):
             {"sector_route": "core_resource", "primary_type": "cyclical"},
         )
         self.assertEqual(valuation["route_anchor"], "core_resource_mid_cycle")
+
+
+class RuntimePathTests(unittest.TestCase):
+    def test_resolve_base_dir_defaults_to_repo_root(self) -> None:
+        from utils.runtime_paths import REPO_ROOT, resolve_base_dir
+
+        self.assertEqual(resolve_base_dir(), REPO_ROOT)
+
+    def test_resolve_base_dir_prefers_environment_over_default(self) -> None:
+        from utils.runtime_paths import resolve_base_dir
+
+        with patch.dict(os.environ, {"A_STOCK_BASE": "/tmp/env-base"}):
+            self.assertEqual(resolve_base_dir(), Path("/tmp/env-base"))
+
+    def test_resolve_base_dir_prefers_cli_override_over_environment(self) -> None:
+        from utils.runtime_paths import resolve_base_dir
+
+        with patch.dict(os.environ, {"A_STOCK_BASE": "/tmp/env-base"}):
+            self.assertEqual(resolve_base_dir("/tmp/cli-base"), Path("/tmp/cli-base"))
+
+    def test_stock_paths_are_pure_path_builders(self) -> None:
+        from utils.runtime_paths import stock_paths
+
+        self.assertEqual(
+            stock_paths(Path("/tmp/project"), "600328"),
+            {
+                "base_dir": Path("/tmp/project"),
+                "raw_dir": Path("/tmp/project/data/raw/600328"),
+                "processed_dir": Path("/tmp/project/data/processed/600328"),
+                "evidence_dir": Path("/tmp/project/evidence/600328"),
+                "report_dir": Path("/tmp/project/reports"),
+            },
+        )
+
+    def test_market_scan_paths_are_pure_path_builders(self) -> None:
+        from utils.runtime_paths import market_scan_paths
+
+        self.assertEqual(
+            market_scan_paths(Path("/tmp/project")),
+            {
+                "base_dir": Path("/tmp/project"),
+                "processed_dir": Path("/tmp/project/data/processed/market_scan"),
+                "report_dir": Path("/tmp/project/reports"),
+                "radar_cache_root": Path("/tmp/project/data/processed/radar_cache"),
+            },
+        )
+
+
+class RuntimeSmokeTests(unittest.TestCase):
+    def test_radar_scan_writes_outputs_to_base_dir(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        partial_scan_data = PartialRadarFlowTests()._partial_scan_data_real_keys()
+        enrichment_scan_data = {
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 120_000_000}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 1_000_000_000}]},
+        }
+        partial_gate = {
+            "decidable_hard_vetos": [],
+            "score_upper_bound": 90.0,
+            "dimensions": {
+                "survival": {"confidence": "none", "requires": ["income_statement", "balance_sheet"]},
+                "valuation": {"confidence": "full", "requires": []},
+            },
+        }
+
+        def fake_report(*, report_dir: str, **_: object) -> dict[str, str]:
+            report_path = Path(report_dir) / "market_opportunity_scan.md"
+            report_path.write_text("# smoke\n", encoding="utf-8")
+            return {"report_path": str(report_path)}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch.dict(
+                radar_scan_engine.DEFAULTS,
+                {
+                    "radar_day_cache_enabled": False,
+                    "priority_score_cutoff": 75,
+                    "secondary_score_cutoff": 65,
+                },
+                clear=False,
+            ):
+                with patch.object(radar_scan_engine, "_load_universe", return_value=[{"code": "600348", "name": "测试股份"}]):
+                    with patch.object(radar_scan_engine, "run_named_scan_steps", side_effect=[partial_scan_data, enrichment_scan_data], create=True):
+                        with patch.object(radar_scan_engine, "evaluate_partial_gate_dimensions", return_value=partial_gate, create=True):
+                            with patch.object(radar_scan_engine, "generate_market_scan_report", side_effect=fake_report, create=True):
+                                result = radar_scan_engine.run_radar_scan("A-share", limit=1, base_dir=temp_root)
+
+            market_scan_path = temp_root / "data" / "processed" / "market_scan" / "market_scan.json"
+            report_path = Path(result["report_path"])
+            self.assertTrue(market_scan_path.exists())
+            self.assertTrue(report_path.exists())
+            self.assertTrue(report_path.is_relative_to(temp_root))
+            self.assertEqual(json.loads(market_scan_path.read_text(encoding="utf-8"))["scope"], "A-share")
+
+    def test_deep_dive_writes_outputs_to_base_dir(self) -> None:
+        module_path = SHARED_DIR.parent / "single-stock-deep-dive" / "scripts" / "engines" / "deep_sniper_engine.py"
+        spec = importlib.util.spec_from_file_location("deep_sniper_engine_under_test", module_path)
+        deep_sniper_engine = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(deep_sniper_engine)
+
+        scan_data = {
+            "company_profile": {"data": {"行业": "软件开发", "主营业务": "SaaS 订阅软件服务", "股票简称": "测试股份"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": "SaaS", "主营收入": 92}]},
+            "realtime_quote": {"data": {"最新价": 10.0, "总市值": 8_000_000_000}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 120_000_000}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 1_000_000_000}]},
+        }
+        gate_result = {
+            "driver_stack": {"primary_type": "compounder", "sector_route": "compounder"},
+            "underwrite_axis": {"score": 70},
+            "realization_axis": {"score": 50},
+            "position_state": "ready",
+            "prev_state": "NEW",
+            "transition_reason": "smoke",
+            "flow_stage": "latent",
+            "scorecard": {"verdict": "reasonable candidate / starter possible"},
+        }
+        valuation_result = {"summary": {"floor_protection": "stable"}}
+        synthesis_result = {"summary": "smoke"}
+
+        def fake_report(*args: object, report_dir: str, **_: object) -> dict[str, str]:
+            report_path = Path(report_dir) / "600328_测试股份_deep_dive.md"
+            report_path.write_text("# deep dive\n", encoding="utf-8")
+            return {"report_path": str(report_path)}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch.object(deep_sniper_engine, "run_full_scan", return_value=scan_data, create=True):
+                with patch.object(deep_sniper_engine, "run_commodity_scan", return_value={"status": "ok"}, create=True):
+                    with patch.object(deep_sniper_engine, "run_macro_scan", return_value={"status": "ok"}, create=True):
+                        with patch.object(deep_sniper_engine, "evaluate_universal_gates", return_value=gate_result, create=True):
+                            with patch.object(deep_sniper_engine, "build_three_case_valuation", return_value=valuation_result, create=True):
+                                with patch.object(deep_sniper_engine, "build_investment_synthesis", return_value=synthesis_result, create=True):
+                                    with patch.object(deep_sniper_engine, "generate_deep_dive_report", side_effect=fake_report, create=True):
+                                        result = deep_sniper_engine.deep_sniper("600328", "测试股份", include_tier0=False, base_dir=temp_root)
+
+            processed_dir = temp_root / "data" / "processed" / "600328"
+            execution_log_path = processed_dir / "execution_log.json"
+            result_path = processed_dir / "deep_dive_result.json"
+            report_path = Path(result["report_path"])
+            self.assertTrue(execution_log_path.exists())
+            self.assertTrue(result_path.exists())
+            self.assertTrue(report_path.exists())
+            self.assertTrue(report_path.is_relative_to(temp_root))
+            self.assertEqual(json.loads(result_path.read_text(encoding="utf-8"))["stock_code"], "600328")
+
+
+class VendorCompatibilityTests(unittest.TestCase):
+    def test_windows_only_vendor_is_skipped_on_macos(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vendor_root = Path(temp_dir)
+            docling_dir = vendor_root / "docling"
+            docling_dir.mkdir(parents=True, exist_ok=True)
+            (docling_dir / "81d243bd2c585b0f4821__mypyc.cp313-win_amd64.pyd").write_bytes(b"stub")
+
+            original_sys_path = list(sys.path)
+            try:
+                with patch.object(sys, "platform", "darwin"):
+                    with patch("utils.vendor_support.DEFAULT_VENDOR_DIR", vendor_root):
+                        from utils.vendor_support import ensure_vendor_path
+
+                        self.assertFalse(ensure_vendor_path("docling"))
+                        self.assertEqual(sys.path, original_sys_path)
+            finally:
+                sys.path[:] = original_sys_path
 
 
 if __name__ == "__main__":

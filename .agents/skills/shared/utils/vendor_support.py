@@ -5,16 +5,32 @@ import os
 import sys
 from pathlib import Path
 
+from utils.runtime_paths import REPO_ROOT
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1]
-PROJECT_ROOT = SCRIPTS_DIR.parents[3]
-DEFAULT_VENDOR_DIR = PROJECT_ROOT / ".vendor"
+DEFAULT_VENDOR_DIR = REPO_ROOT / ".vendor"
+WINDOWS_ONLY_MARKERS = (
+    "*.pyd",
+    "*win_amd64*",
+    "pywin32.pth",
+    "pywin32.version.txt",
+    "pythoncom.py",
+    "PyWin32.chm",
+)
 
 def _env_vendor_override(package_name: str) -> Path | None:
     """Check for a VENDOR_{PACKAGE}_PATH environment variable override."""
     env_key = f"VENDOR_{package_name.upper()}_PATH"
     raw = os.getenv(env_key, "").strip()
     return Path(raw) if raw else None
+
+
+def _is_windows_only_vendor(candidate: Path) -> bool:
+    if sys.platform.startswith("win") or not candidate.exists() or not candidate.is_dir():
+        return False
+    for pattern in WINDOWS_ONLY_MARKERS:
+        if any(candidate.rglob(pattern)):
+            return True
+    return False
 
 
 def ensure_vendor_path(package_name: str) -> bool:
@@ -27,6 +43,8 @@ def ensure_vendor_path(package_name: str) -> bool:
 
     for candidate in candidates:
         if candidate.exists():
+            if _is_windows_only_vendor(candidate):
+                continue
             candidate_str = str(candidate)
             if candidate_str not in sys.path:
                 sys.path.insert(0, candidate_str)
