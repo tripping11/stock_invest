@@ -6,6 +6,7 @@ from typing import Any
 
 from utils.config_loader import load_vcrf_state_machine, resolve_vcrf_weight_template
 from utils.financial_snapshot import extract_latest_price, extract_market_cap
+from utils.vcrf_state_utils import classify_vcrf_position_state
 from utils.value_utils import clamp, normalize_text, safe_float
 
 
@@ -128,21 +129,30 @@ def classify_position_state(
     repair_state: str,
     flow_stage: str,
 ) -> str:
-    if floor_protection is None or floor_protection < 0.75:
-        return "reject"
-    if (recognition_upside or 0.0) <= 0.20 or (normalized_upside or 0.0) <= 0.15:
-        return "harvest"
-
     flow_rank = FLOW_STAGE_ORDER.get(flow_stage, 0)
     repair_rank = {"none": 0, "stabilizing": 1, "repairing": 2, "confirmed": 3}.get(repair_state, 0)
+    if floor_protection is None or floor_protection < 0.75:
+        underwrite_score = 0.0
+    else:
+        underwrite_score = 80.0
 
+    realization_score = 20.0
     if flow_rank >= FLOW_STAGE_ORDER.get("trend", 3) and repair_rank >= 2 and (recognition_upside or 0.0) >= 0.30:
-        return "attack"
-    if flow_rank >= FLOW_STAGE_ORDER.get("ignition", 2) and repair_rank >= 1 and (normalized_upside or 0.0) >= 0.25:
-        return "ready"
-    if floor_protection >= 0.80:
-        return "cold_storage"
-    return "reject"
+        realization_score = 75.0
+    elif flow_rank >= FLOW_STAGE_ORDER.get("ignition", 2) and repair_rank >= 1 and (normalized_upside or 0.0) >= 0.25:
+        realization_score = 50.0
+
+    state = classify_vcrf_position_state(
+        underwrite_score,
+        realization_score,
+        flow_stage=flow_stage,
+        valuation_summary={
+            "floor_protection": floor_protection,
+            "normalized_upside": normalized_upside,
+            "recognition_upside": recognition_upside,
+        },
+    )
+    return normalize_text(state).lower()
 
 
 def score_repair_state(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
@@ -258,6 +268,17 @@ def _flow_level1_score(kline: dict[str, Any]) -> tuple[float, float, float, floa
 
 
 def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
+    market = normalize_text(driver_stack.get("market") or "A-share")
+    if market != "A-share":
+        return _component_payload(
+            0.0,
+            availability="missing",
+            confidence="degraded",
+            reason="us_flow_confirmation_not_implemented",
+            inputs_used={"market": market},
+            extra={"flow_stage": "latent"},
+        )
+
     kline = scan_data.get("stock_kline", {}).get("data", {})
     level1_score, volume_ratio_score, drawdown_rebound_score, turnover_expansion_score = _flow_level1_score(kline)
     event_signals = scan_data.get("event_signals", {}) or {}
