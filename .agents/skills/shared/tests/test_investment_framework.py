@@ -1135,6 +1135,54 @@ class VCRFFlowEngineTests(unittest.TestCase):
         )
         self.assertEqual(state, "harvest")
 
+    def test_position_state_uses_shared_harvest_threshold_buffer(self) -> None:
+        from engines.flow_realization_engine import classify_position_state
+        from utils.vcrf_state_utils import classify_vcrf_position_state
+
+        helper_state = classify_vcrf_position_state(
+            underwrite_score=82.0,
+            realization_score=68.0,
+            flow_stage="latent",
+            valuation_summary={
+                "floor_protection": 0.95,
+                "normalized_upside": 0.18,
+                "recognition_upside": -0.06,
+            },
+        )
+        compatibility_state = classify_position_state(
+            floor_protection=0.95,
+            normalized_upside=0.18,
+            recognition_upside=-0.06,
+            repair_state="confirmed",
+            flow_stage="latent",
+        )
+        self.assertEqual(helper_state, "HARVEST")
+        self.assertEqual(compatibility_state, "harvest")
+
+    def test_position_state_uses_shared_crowded_flow_harvest_rule(self) -> None:
+        from engines.flow_realization_engine import classify_position_state
+        from utils.vcrf_state_utils import classify_vcrf_position_state
+
+        helper_state = classify_vcrf_position_state(
+            underwrite_score=84.0,
+            realization_score=78.0,
+            flow_stage="crowded",
+            valuation_summary={
+                "floor_protection": 0.92,
+                "normalized_upside": 0.32,
+                "recognition_upside": 0.22,
+            },
+        )
+        compatibility_state = classify_position_state(
+            floor_protection=0.92,
+            normalized_upside=0.32,
+            recognition_upside=0.22,
+            repair_state="confirmed",
+            flow_stage="crowded",
+        )
+        self.assertEqual(helper_state, "HARVEST")
+        self.assertEqual(compatibility_state, "harvest")
+
     def test_flow_stage_order_is_monotonic(self) -> None:
         from engines.flow_realization_engine import FLOW_STAGE_ORDER
 
@@ -1273,6 +1321,25 @@ class VCRFGateAndRadarTests(unittest.TestCase):
         self.assertIn("business_truth", gate["gates"])
         self.assertIn("survival_truth", gate["gates"])
 
+    def test_partial_gate_bridges_survival_and_valuation_from_vcrf_runtime(self) -> None:
+        with patch.object(
+            universal_gate_module,
+            "assess_survival_boundary",
+            return_value={"score": 80.0},
+            create=True,
+        ) as mock_survival:
+            with patch.object(
+                universal_gate_module,
+                "build_three_case_valuation",
+                return_value={"summary": {"floor_protection": 0.95}},
+            ) as mock_valuation:
+                result = universal_gate_module.evaluate_partial_gate_dimensions("600348", VCRFUniversalGateTests()._scan_data())
+
+        mock_survival.assert_called_once()
+        mock_valuation.assert_called_once()
+        self.assertEqual(result["dimensions"]["survival"]["score"], 12.0)
+        self.assertEqual(result["dimensions"]["valuation"]["score"], 16.0)
+
     def test_radar_priority_bucket_requires_ready_or_attack_state(self) -> None:
         radar_scan_engine = _load_radar_scan_engine()
         partial_scan_data = PartialRadarFlowTests()._partial_scan_data_real_keys()
@@ -1386,6 +1453,32 @@ class VCRFUniversalGateTests(unittest.TestCase):
         aggressive_scan_data = self._scan_data(profit=240_000_000)
         gate = evaluate_universal_gates("600348", aggressive_scan_data, prior_state="HARVEST")
         self.assertNotEqual(gate["position_state"], "attack")
+
+    def test_legacy_scorecard_survival_and_valuation_bridge_reuse_vcrf_runtime(self) -> None:
+        with patch.object(
+            universal_gate_module,
+            "assess_survival_boundary",
+            return_value={"score": 80.0},
+            create=True,
+        ) as mock_survival:
+            with patch.object(
+                universal_gate_module,
+                "build_three_case_valuation",
+                return_value={
+                    "summary": {
+                        "floor_protection": 0.85,
+                        "normalized_upside": 0.40,
+                        "recognition_upside": 0.60,
+                        "wind_dependency": "mid",
+                    }
+                },
+            ) as mock_valuation:
+                gate = evaluate_universal_gates("600348", self._scan_data())
+
+        mock_survival.assert_called_once()
+        self.assertGreaterEqual(mock_valuation.call_count, 1)
+        self.assertEqual(gate["scorecard"]["survival"], 12.0)
+        self.assertEqual(gate["scorecard"]["valuation"], 12.0)
 
 
 class VCRFRadarIntegrationTests(unittest.TestCase):
@@ -1512,6 +1605,12 @@ class VCRFConfigContractTests(unittest.TestCase):
         self.assertIn("harvest_candidate", cfg)
         self.assertEqual(cfg["harvest_candidate"]["consecutive_closes_above_recognition"], 3)
 
+    def test_state_machine_harvest_threshold_uses_negative_buffer(self) -> None:
+        from utils.config_loader import load_vcrf_state_machine
+
+        cfg = load_vcrf_state_machine()
+        self.assertEqual(cfg["state_thresholds"]["harvest"]["recognition_upside_max"], -0.05)
+
 
 class VCRFDataSourceTests(unittest.TestCase):
     def test_akshare_adapter_exposes_cashflow_statement_step(self) -> None:
@@ -1529,6 +1628,13 @@ class VCRFDataSourceTests(unittest.TestCase):
 
         result = fetch_vcrf_event_signals("600348", start_date="20240101", end_date="20241231")
         self.assertIn("events", result)
+
+    def test_source_registry_documents_us_market_placeholders(self) -> None:
+        from utils.config_loader import load_source_registry
+
+        registry = load_source_registry()
+        self.assertIn("us_market", registry)
+        self.assertIn("SEC EDGAR Form 4", registry["us_market"]["signals"])
 
 
 class VCRFStateHistoryTests(unittest.TestCase):
@@ -1548,6 +1654,45 @@ class VCRFStateHistoryTests(unittest.TestCase):
 
 
 class VCRFDriverStackTests(unittest.TestCase):
+    def _resource_scan_data(
+        self,
+        *,
+        current_vs_high: float = 42.0,
+        latest_profit: float = -100_000_000,
+        previous_profit: float = -200_000_000,
+        older_profit: float = 50_000_000,
+        latest_ocf: float | None = 60_000_000,
+        impairment_loss: float | None = -90_000_000,
+        latest_margin: float | None = 0.30,
+        previous_margin: float | None = 0.31,
+    ) -> dict[str, dict]:
+        revenue_rows = []
+        if latest_margin is not None:
+            revenue_rows.append({"报告期": "20241231", "主营构成": "煤炭", "主营收入": 85, "收入比例": 85, "毛利率": latest_margin})
+        if previous_margin is not None:
+            revenue_rows.append({"报告期": "20231231", "主营构成": "煤炭", "主营收入": 82, "收入比例": 82, "毛利率": previous_margin})
+        latest_income = {"报告期": "20241231", "归属于母公司所有者的净利润": latest_profit}
+        if impairment_loss is not None:
+            latest_income["资产减值损失"] = impairment_loss
+        return {
+            "company_profile": {"data": {"行业": "煤炭", "主营业务": "煤炭开采与销售", "股票简称": "测试股份"}},
+            "revenue_breakdown": {"data": revenue_rows},
+            "stock_kline": {"data": {"current_vs_5yr_high": current_vs_high}},
+            "realtime_quote": {"data": {"总市值": 8_000_000_000, "最新价": 10.0}},
+            "income_statement": {
+                "data": [
+                    latest_income,
+                    {"报告期": "20231231", "归属于母公司所有者的净利润": previous_profit},
+                    {"报告期": "20221231", "归属于母公司所有者的净利润": older_profit},
+                ]
+            },
+            "cashflow_statement": (
+                {"data": [{"报告期": "20241231", "经营活动产生的现金流量净额": latest_ocf}]}
+                if latest_ocf is not None
+                else {"data": []}
+            ),
+        }
+
     def test_sector_route_resolves_from_active_sector_classification(self) -> None:
         from utils.primary_type_router import resolve_sector_route
 
@@ -1580,6 +1725,120 @@ class VCRFDriverStackTests(unittest.TestCase):
             component_availability={"survival_boundary": "missing"},
         )
         self.assertEqual(adjusted, "COLD_STORAGE")
+
+    def test_build_driver_stack_marks_big_bath_turnaround_when_features_align(self) -> None:
+        from utils.primary_type_router import build_driver_stack
+
+        driver_stack = build_driver_stack("600348", self._resource_scan_data())
+        self.assertEqual(driver_stack["big_bath_result"]["verdict"], "big_bath")
+        self.assertEqual(driver_stack["primary_type"], "turnaround")
+
+    def test_build_driver_stack_returns_inconclusive_when_big_bath_feature_missing(self) -> None:
+        from utils.primary_type_router import build_driver_stack
+
+        driver_stack = build_driver_stack("600348", self._resource_scan_data(latest_margin=None))
+        self.assertEqual(driver_stack["big_bath_result"]["verdict"], "inconclusive")
+
+    def test_build_driver_stack_sets_peak_when_genuine_collapse_detected(self) -> None:
+        from utils.primary_type_router import build_driver_stack
+
+        driver_stack = build_driver_stack(
+            "600348",
+            self._resource_scan_data(
+                current_vs_high=40.0,
+                latest_ocf=-150_000_000,
+                impairment_loss=-10_000_000,
+                latest_margin=0.20,
+                previous_margin=0.30,
+            ),
+        )
+        self.assertEqual(driver_stack["big_bath_result"]["verdict"], "genuine_collapse")
+        self.assertEqual(driver_stack["modifiers"]["cycle_state"], "peak")
+
+    def test_build_driver_stack_marks_low_confidence_trough_when_margin_declines(self) -> None:
+        from utils.primary_type_router import build_driver_stack
+
+        driver_stack = build_driver_stack(
+            "600348",
+            self._resource_scan_data(
+                current_vs_high=40.0,
+                latest_ocf=None,
+                latest_margin=0.20,
+                previous_margin=0.30,
+            ),
+        )
+        self.assertEqual(driver_stack["modifiers"]["cycle_state"], "trough")
+        self.assertEqual(driver_stack["modifiers"]["cycle_state_confidence"], "low")
+
+    def test_modifier_validation_raises_when_enabled(self) -> None:
+        from utils import primary_type_router as primary_type_router_module
+
+        with patch.dict(os.environ, {"A_STOCK_VALIDATE_MODIFIERS": "1"}, clear=False):
+            with patch.object(primary_type_router_module, "_infer_realization_path", return_value="invalid-path"):
+                with self.assertRaises(AssertionError):
+                    primary_type_router_module.build_driver_stack("600348", self._resource_scan_data())
+
+    def test_driver_stack_marks_non_numeric_ticker_as_us_market(self) -> None:
+        from utils.primary_type_router import build_driver_stack
+
+        driver_stack = build_driver_stack(
+            "AAPL",
+            {
+                "company_profile": {"data": {"行业": "软件开发", "主营业务": "云服务", "股票简称": "Apple"}},
+                "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": "软件", "主营收入": 90}]},
+                "realtime_quote": {"data": {"总市值": 3_000_000_000_000, "最新价": 180.0}},
+                "stock_kline": {"data": {"current_vs_5yr_high": 88.0}},
+            },
+        )
+        self.assertEqual(driver_stack["market"], "US-share")
+
+    def test_us_market_flow_confirmation_returns_explicit_placeholder(self) -> None:
+        from engines.flow_realization_engine import score_flow_confirmation
+
+        result = score_flow_confirmation(
+            {
+                "stock_kline": {"data": {"latest_close": 180.0}},
+                "event_signals": {},
+            },
+            {
+                "market": "US-share",
+                "modifiers": {"flow_stage": "latent"},
+            },
+        )
+        self.assertEqual(result["availability"], "missing")
+        self.assertEqual(result["confidence"], "degraded")
+        self.assertEqual(result["reason"], "us_flow_confirmation_not_implemented")
+
+
+class VCRFSamplingTests(unittest.TestCase):
+    def test_cap_bucket_uses_new_a_share_boundaries(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+
+        self.assertEqual(radar_scan_engine._cap_bucket(2_900_000_000), "micro")
+        self.assertEqual(radar_scan_engine._cap_bucket(3_000_000_000), "small")
+        self.assertEqual(radar_scan_engine._cap_bucket(14_900_000_000), "small")
+        self.assertEqual(radar_scan_engine._cap_bucket(15_000_000_000), "mid")
+        self.assertEqual(radar_scan_engine._cap_bucket(49_900_000_000), "mid")
+        self.assertEqual(radar_scan_engine._cap_bucket(50_000_000_000), "large")
+
+    def test_layered_sample_uses_new_rotation_and_liquidity_floor(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+
+        records = [
+            {"code": "micro1", "name": "微盘", "market_cap": 2_500_000_000, "turnover": 60_000_000},
+            {"code": "small1", "name": "小盘1", "market_cap": 4_000_000_000, "turnover": 60_000_000},
+            {"code": "small2", "name": "小盘2", "market_cap": 10_000_000_000, "turnover": 70_000_000},
+            {"code": "small3", "name": "小盘3", "market_cap": 14_000_000_000, "turnover": 80_000_000},
+            {"code": "mid1", "name": "中盘", "market_cap": 20_000_000_000, "turnover": 90_000_000},
+            {"code": "large1", "name": "大盘", "market_cap": 60_000_000_000, "turnover": 100_000_000},
+            {"code": "filtered", "name": "低流动性", "market_cap": 6_000_000_000, "turnover": 40_000_000},
+        ]
+
+        selected = radar_scan_engine._layered_sample(records, 6)
+        selected_buckets = [radar_scan_engine._cap_bucket(item["market_cap"]) for item in selected]
+
+        self.assertEqual(selected_buckets, ["small", "small", "mid", "micro", "small", "large"])
+        self.assertNotIn("filtered", {item["code"] for item in selected})
 
 
 class VCRFRealizationEngineTests(unittest.TestCase):
