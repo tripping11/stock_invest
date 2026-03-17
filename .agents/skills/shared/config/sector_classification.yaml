@@ -224,6 +224,45 @@ realization_path_keywords:
     - 战略投资者
     - 举牌
 
+modifier_enums:
+  cycle_state:
+    - trough
+    - repair
+    - expansion
+    - peak
+  cycle_state_confidence:
+    - high
+    - low
+  repair_state:
+    - none
+    - stabilizing
+    - repairing
+    - confirmed
+  distress_source:
+    - cyclical
+    - operational
+    - one_off
+  realization_path:
+    - repricing
+    - asset_unlock
+    - mna
+    - buyback
+    - policy
+    - capital_return
+    - institutional_entry
+  flow_stage:
+    - abandoned
+    - latent
+    - ignition
+    - trend
+    - crowded
+  elasticity_bucket:
+    - micro
+    - small
+    - mid
+    - large
+    - mega
+
 special_tag_rules:
   st:
     keywords:

@@ -280,9 +280,14 @@ def generate_market_scan_report(
         "## 4. Priority shortlist",
     ]
     for item in priority_shortlist:
+        edge_summary = (
+            f"state={item.get('position_state', 'unknown')} | "
+            f"U={item.get('underwrite_score', 'N/A')} | "
+            f"R={item.get('realization_score', 'N/A')}"
+        )
         lines.extend(
             [
-                f"- {item['ticker']} / {item['company_name']} | {item['opportunity_type']} | {item['score']}/100",
+                f"- {item['ticker']} / {item['company_name']} | {item['opportunity_type']} | {edge_summary}",
                 f"  thesis: {item['thesis']}",
                 f"  mispricing: {item['mispricing']}",
                 f"  catalysts: {', '.join(item['catalysts']) or 'N/A'}",
@@ -293,13 +298,22 @@ def generate_market_scan_report(
         )
     lines.extend(["", "## 5. Secondary watchlist"])
     for item in secondary_watchlist:
-        lines.append(f"- {item['ticker']} / {item['company_name']} | {item['opportunity_type']} | {item['score']}/100 | {item['thesis']}")
+        lines.append(
+            f"- {item['ticker']} / {item['company_name']} | {item['opportunity_type']} | "
+            f"state={item.get('position_state', 'unknown')} | U={item.get('underwrite_score', 'N/A')} | "
+            f"R={item.get('realization_score', 'N/A')} | {item['thesis']}"
+        )
     lines.extend(["", "## 6. Rejected ideas"])
     for item in rejected:
         lines.append(f"- {item['ticker']} / {item['company_name']}: {item['reason']}")
-    lines.extend(["", "## 7. Ranking table", "", "| Name | Type | Score | Edge summary | Next action |", "| --- | --- | --- | --- | --- |"])
+    lines.extend(["", "## 7. Ranking table", "", "| Name | Type | State | Edge summary | Next action |", "| --- | --- | --- | --- | --- |"])
     for item in ranking_rows:
-        lines.append(f"| {item['company_name']} | {item['opportunity_type']} | {item['score']} | {item['thesis']} | {item.get('next_step', item.get('reason', 'watch'))} |")
+        lines.append(
+            f"| {item['company_name']} | {item['opportunity_type']} | "
+            f"{item.get('position_state', 'unknown')} | "
+            f"U={item.get('underwrite_score', 'N/A')} / R={item.get('realization_score', 'N/A')} | "
+            f"{item.get('next_step', item.get('reason', 'watch'))} |"
+        )
     lines.extend(["", "## 8. Deep-dive queue"])
     for item in priority_shortlist[:3]:
         lines.append(f"- {item['ticker']} / {item['company_name']}: deep dive first because {item['why_passed']}")

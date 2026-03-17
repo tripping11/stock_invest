@@ -1,6 +1,7 @@
 """Universal six-gate evaluator for the new investment framework."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from engines.flow_realization_engine import score_realization_axis
@@ -24,7 +25,8 @@ from utils.opportunity_classifier import (
 )
 from utils.primary_type_router import build_driver_stack
 from utils.score_verdict import pick_score_verdict
-from utils.vcrf_probes import score_underwrite_axis
+from utils.vcrf_probes import assess_survival_boundary, score_underwrite_axis
+from utils.vcrf_state_utils import classify_vcrf_position_state
 from utils.value_utils import clamp, normalize_text, safe_float
 
 
@@ -78,6 +80,8 @@ _STATE_ORDER = {
     "HARVEST": 4,
 }
 
+logger = logging.getLogger(__name__)
+
 
 def _status_from_score(score: float, passing: float, caution: float) -> str:
     if score >= passing:
@@ -102,53 +106,32 @@ def _apply_degradation_caps(proposed_state: str, component_availability: dict[st
     return current_state
 
 
-def _valuation_score(primary_type: str, pb: float | None, current_vs_high: float | None) -> tuple[float, str]:
-    score = 8.0
-    reasons: list[str] = []
-    if primary_type == "asset_play":
-        if pb is not None and pb <= 0.8:
-            score = 18.0
-            reasons.append(f"PB {pb:.2f} suggests discount to book")
-        elif pb is not None and pb <= 1.1:
-            score = 14.0
-            reasons.append(f"PB {pb:.2f} is still close to asset value")
-        elif pb is not None:
-            score = 8.0
-            reasons.append(f"PB {pb:.2f} no longer offers obvious asset discount")
-    elif primary_type == "cyclical":
-        if pb is not None and pb <= 1.2 and current_vs_high is not None and current_vs_high <= 60:
-            score = 16.0
-            reasons.append("cycle-sensitive valuation still looks compressed")
-        elif current_vs_high is not None and current_vs_high >= 85:
-            score = 5.0
-            reasons.append("price is already close to prior highs")
-    elif primary_type == "compounder":
-        if pb is not None and pb <= 3.0:
-            score = 14.0
-            reasons.append(f"PB {pb:.2f} is not obviously overpaying for quality")
-        elif pb is not None and pb >= 6.0:
-            score = 5.0
-            reasons.append(f"PB {pb:.2f} already implies aggressive expectations")
-    elif primary_type == "turnaround":
-        if pb is not None and pb <= 1.0:
-            score = 15.0
-            reasons.append("market still prices the repair story cautiously")
-        elif current_vs_high is not None and current_vs_high >= 80:
-            score = 6.0
-            reasons.append("turnaround may already be priced in")
-    elif primary_type == "special_situation":
-        score = 12.0 if current_vs_high is None or current_vs_high <= 75 else 7.0
-        reasons.append("special situations need event path more than static multiples")
+def _valuation_score(context: dict[str, Any]) -> tuple[float, str]:
+    driver_stack = context.get("driver_stack")
+    if not driver_stack:
+        logger.warning("valuation bridge fallback for %s: missing driver_stack", context.get("stock_code"))
+        return 8.0, "valuation bridge unavailable: missing driver_stack"
 
-    if current_vs_high is not None:
-        if current_vs_high <= 50:
-            score += 2.0
-            reasons.append(f"price remains only {current_vs_high:.1f}% of 5y high")
-        elif current_vs_high >= 90:
-            score -= 2.0
-            reasons.append(f"price already near historical highs at {current_vs_high:.1f}%")
-
-    return clamp(score, 0.0, DIMENSION_MAX["valuation"]), "; ".join(reasons) if reasons else "valuation signal is mixed"
+    valuation_result = context.get("_valuation_result")
+    if valuation_result is None:
+        valuation_result = build_three_case_valuation(context["stock_code"], context["scan_data"], driver_stack)
+        context["_valuation_result"] = valuation_result
+    valuation_summary = (valuation_result or {}).get("summary", {}) or {}
+    floor_protection = safe_float(valuation_summary.get("floor_protection"))
+    if floor_protection is None:
+        logger.warning("valuation bridge fallback for %s: missing floor_protection", context.get("stock_code"))
+        return 8.0, "valuation bridge unavailable: missing floor_protection"
+    if floor_protection >= 1.00:
+        score = 20.0
+    elif floor_protection >= 0.90:
+        score = 16.0
+    elif floor_protection >= 0.80:
+        score = 12.0
+    elif floor_protection >= 0.70:
+        score = 8.0
+    else:
+        score = 4.0
+    return clamp(score, 0.0, DIMENSION_MAX["valuation"]), f"floor_protection={floor_protection:.2f}"
 
 
 def _resolve_gate_context(
@@ -191,11 +174,13 @@ def _resolve_gate_context(
     current_vs_high = safe_float(kline.get("current_vs_5yr_high")) or safe_float(kline.get("current_vs_high"))
     pb = safe_float(valuation.get("pb"))
     business_text = normalize_text(profile.get("主营业务") or profile.get("经营范围"))
+    driver_stack = build_driver_stack(stock_code, scan_data, extra_texts=extra_texts)
+    merged_opportunity = _merge_opportunity_context(resolved_opportunity, driver_stack)
 
     return {
         "stock_code": stock_code,
         "scan_data": scan_data,
-        "opportunity_context": resolved_opportunity,
+        "opportunity_context": merged_opportunity,
         "profile": profile,
         "quote": quote,
         "valuation": valuation,
@@ -216,6 +201,8 @@ def _resolve_gate_context(
         "current_vs_high": current_vs_high,
         "pb": pb,
         "business_text": business_text,
+        "driver_stack": driver_stack,
+        "_valuation_result": None,
     }
 
 
@@ -234,14 +221,16 @@ def _business_quality_score(context: dict[str, Any]) -> float:
 
 
 def _survival_score(context: dict[str, Any]) -> float:
-    survival_score = 5.0
-    if context["latest_balance"].get("total_equity") not in (None, 0):
-        survival_score += 4.0 if context["latest_balance"]["total_equity"] > 0 else -4.0
-    if context["latest_income"].get("net_profit") is not None:
-        survival_score += 4.0 if context["latest_income"]["net_profit"] > 0 else 1.0
-    if context["market_cap"] is not None and context["market_cap"] >= 2e9:
-        survival_score += 2.0
-    return clamp(survival_score, 0.0, DIMENSION_MAX["survival"])
+    driver_stack = context.get("driver_stack")
+    if not driver_stack:
+        logger.warning("survival bridge fallback for %s: missing driver_stack", context.get("stock_code"))
+        return 5.0
+    survival_probe = assess_survival_boundary(context["scan_data"], driver_stack)
+    raw_score = safe_float((survival_probe or {}).get("score"))
+    if raw_score is None:
+        logger.warning("survival bridge fallback for %s: missing raw survival score", context.get("stock_code"))
+        return 5.0
+    return clamp(raw_score / 100.0 * DIMENSION_MAX["survival"], 0.0, DIMENSION_MAX["survival"])
 
 
 def _regime_cycle_score(context: dict[str, Any]) -> float:
@@ -334,32 +323,12 @@ def _classify_vcrf_state(
     flow_stage: str,
     valuation_summary: dict[str, Any],
 ) -> str:
-    cfg = load_vcrf_state_machine().get("state_thresholds", {})
-    reject_floor = float(cfg.get("reject_underwrite_below", 60))
-    cold_cfg = cfg.get("cold_storage", {}) or {}
-    ready_cfg = cfg.get("ready", {}) or {}
-    attack_cfg = cfg.get("attack", {}) or {}
-    harvest_cfg = cfg.get("harvest", {}) or {}
-
-    recognition_upside = safe_float(valuation_summary.get("recognition_upside"))
-    crowded_flow_stage = normalize_text(harvest_cfg.get("crowded_flow_stage")).lower()
-    if underwrite_score < reject_floor:
-        return "REJECT"
-    if recognition_upside is not None and recognition_upside <= safe_float(harvest_cfg.get("recognition_upside_max")):
-        return "HARVEST"
-    if crowded_flow_stage and normalize_text(flow_stage).lower() == crowded_flow_stage:
-        return "HARVEST"
-    if underwrite_score >= float(attack_cfg.get("min_underwrite", 75)) and realization_score >= float(attack_cfg.get("min_realization", 70)):
-        return "ATTACK"
-    if (
-        underwrite_score >= float(ready_cfg.get("min_underwrite", 70))
-        and realization_score >= float(ready_cfg.get("min_realization", 40))
-        and realization_score <= float(ready_cfg.get("max_realization", 70))
-    ):
-        return "READY"
-    if underwrite_score >= float(cold_cfg.get("min_underwrite", 75)) and realization_score <= float(cold_cfg.get("max_realization", 39.999)):
-        return "COLD_STORAGE"
-    return "REJECT"
+    return classify_vcrf_position_state(
+        underwrite_score,
+        realization_score,
+        flow_stage=flow_stage,
+        valuation_summary=valuation_summary,
+    )
 
 
 def _legacy_scorecard_alias(
@@ -372,11 +341,7 @@ def _legacy_scorecard_alias(
     survival_score = _survival_score(context)
     management_score = float(context["management"]["score"])
     regime_cycle_score = _regime_cycle_score(context)
-    valuation_score, _ = _valuation_score(
-        context["opportunity_context"].get("primary_type", "unknown"),
-        context["pb"],
-        context["current_vs_high"],
-    )
+    valuation_score, _ = _valuation_score(context)
     catalyst_score = float(context["catalyst"]["score"])
     market_structure_score = _market_structure_score(context)
     total_score = round(
@@ -431,11 +396,7 @@ def evaluate_partial_gate_dimensions(
     business_quality_score = _business_quality_score(context)
     management_score = float(context["management"]["score"])
     regime_cycle_score = _regime_cycle_score(context)
-    valuation_score, valuation_reason = _valuation_score(
-        context["opportunity_context"].get("primary_type", "unknown"),
-        context["pb"],
-        context["current_vs_high"],
-    )
+    valuation_score, valuation_reason = _valuation_score(context)
     catalyst_score = float(context["catalyst"]["score"])
     market_structure_score = _market_structure_score(context)
 
@@ -560,9 +521,8 @@ def evaluate_universal_gates(
     if context["management"]["score"] <= 2 and context["management"]["red_flags"]:
         hard_vetos.append("management credibility is materially impaired")
 
-    driver_stack = build_driver_stack(stock_code, scan_data, extra_texts=extra_texts)
-    merged_opportunity = _merge_opportunity_context(context["opportunity_context"], driver_stack)
-    context["opportunity_context"] = merged_opportunity
+    driver_stack = context["driver_stack"]
+    merged_opportunity = context["opportunity_context"]
 
     underwrite_axis = score_underwrite_axis(scan_data, driver_stack)
     initial_realization_axis = score_realization_axis(scan_data, driver_stack)
@@ -571,7 +531,10 @@ def evaluate_universal_gates(
     flow_stage = normalize_text(realization_axis.get("flow_stage") or driver_stack.get("modifiers", {}).get("flow_stage") or "latent").lower()
     driver_stack["modifiers"]["flow_stage"] = flow_stage
 
-    valuation_result = build_three_case_valuation(stock_code, scan_data, driver_stack)
+    valuation_result = context.get("_valuation_result")
+    if valuation_result is None:
+        valuation_result = build_three_case_valuation(stock_code, scan_data, driver_stack)
+        context["_valuation_result"] = valuation_result
     valuation_summary = valuation_result.get("summary", {}) or {}
     proposed_state = _classify_vcrf_state(
         underwrite_axis.get("score", 0.0),

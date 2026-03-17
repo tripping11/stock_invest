@@ -321,13 +321,10 @@ class UniversalGateTests(unittest.TestCase):
         self.assertIn("balance sheet survival is questionable", gate["hard_vetos"])
         self.assertEqual(gate["scorecard"]["verdict"], "reject / no action")
 
-    def test_quality_cyclical_case_scores_as_candidate(self) -> None:
+    def test_quality_cyclical_case_with_thin_financials_is_not_forced_into_candidate_bucket(self) -> None:
         gate = evaluate_universal_gates("600348", self._scan_data())
-        self.assertGreaterEqual(gate["scorecard"]["total"], 75)
-        self.assertIn(
-            gate["scorecard"]["verdict"],
-            {"high conviction / strong candidate", "reasonable candidate / starter possible"},
-        )
+        self.assertLess(gate["scorecard"]["total"], 75)
+        self.assertIn(gate["scorecard"]["verdict"], {"reject / no action", "watch / needs work"})
 
 
 class PartialRadarFlowTests(unittest.TestCase):
@@ -373,7 +370,7 @@ class PartialRadarFlowTests(unittest.TestCase):
         self.assertEqual(result["opportunity_context"]["primary_type"], "cyclical")
         self.assertEqual(result["opportunity_context"]["confidence"], "high")
         self.assertEqual(result["dimensions"]["business_quality"]["score"], 14.0)
-        self.assertEqual(result["known_total"], 60.0)
+        self.assertEqual(result["known_total"], 50.0)
 
     def test_prefilter_rejects_only_when_upper_bound_is_below_cutoff(self) -> None:
         radar_scan_engine = _load_radar_scan_engine()
@@ -1123,7 +1120,7 @@ class VCRFFlowEngineTests(unittest.TestCase):
         )
         self.assertEqual(state, "reject")
 
-    def test_position_state_is_harvest_when_normalized_upside_exhausted_in_trend(self) -> None:
+    def test_position_state_stays_cold_storage_when_normalized_upside_is_low_but_harvest_threshold_not_hit(self) -> None:
         from engines.flow_realization_engine import classify_position_state
 
         state = classify_position_state(
@@ -1133,7 +1130,7 @@ class VCRFFlowEngineTests(unittest.TestCase):
             repair_state="confirmed",
             flow_stage="trend",
         )
-        self.assertEqual(state, "harvest")
+        self.assertEqual(state, "cold_storage")
 
     def test_position_state_uses_shared_harvest_threshold_buffer(self) -> None:
         from engines.flow_realization_engine import classify_position_state
@@ -1403,6 +1400,27 @@ class VCRFGateAndRadarTests(unittest.TestCase):
         top_6_by_cap = ["600000", "600001", "600002", "600003", "600004", "600005"]
         self.assertNotEqual(codes, top_6_by_cap, "Universe should not be pure top-cap slice")
 
+    def test_load_universe_prefers_float_market_cap_and_industry_round_robin(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        fake_df = pd.DataFrame(
+            [
+                {"代码": "600001", "名称": "煤炭A", "总市值": 120_000_000_000, "流通市值": 6_000_000_000, "成交额": 90_000_000, "行业": "煤炭"},
+                {"代码": "600002", "名称": "煤炭B", "总市值": 130_000_000_000, "流通市值": 7_000_000_000, "成交额": 85_000_000, "行业": "煤炭"},
+                {"代码": "600003", "名称": "煤炭C", "总市值": 140_000_000_000, "流通市值": 8_000_000_000, "成交额": 80_000_000, "行业": "煤炭"},
+                {"代码": "600004", "名称": "煤炭D", "总市值": 150_000_000_000, "流通市值": 9_000_000_000, "成交额": 75_000_000, "行业": "煤炭"},
+                {"代码": "300001", "名称": "软件A", "总市值": 40_000_000_000, "流通市值": 4_000_000_000, "成交额": 88_000_000, "行业": "软件开发"},
+            ]
+        )
+
+        with patch.object(radar_scan_engine.ak, "stock_zh_a_spot_em", return_value=fake_df):
+            universe = radar_scan_engine._load_universe("A-share", 4)
+
+        codes = [item["code"] for item in universe]
+        industries = {item["industry"] for item in universe}
+        self.assertIn("300001", codes)
+        self.assertIn("软件开发", industries)
+        self.assertTrue(all(item["float_market_cap"] is not None for item in universe))
+
 
 class VCRFUniversalGateTests(unittest.TestCase):
     def _scan_data(self, *, equity=1_000_000_000, profit=120_000_000, industry="煤炭") -> dict:
@@ -1526,6 +1544,73 @@ class VCRFRadarIntegrationTests(unittest.TestCase):
         report = summarize_axis_distribution([10, 20, 30, 40, 50])
         self.assertIn("p50", report)
         self.assertIn("histogram", report)
+
+    def test_radar_ranking_prefers_position_state_and_axes_over_legacy_score(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        universe = [
+            {"code": "600348", "name": "Alpha", "industry": "煤炭"},
+            {"code": "600328", "name": "Beta", "industry": "化工"},
+        ]
+        partial_gate = {
+            "decidable_hard_vetos": [],
+            "score_upper_bound": 90.0,
+            "blocked_hard_vetos": [],
+            "dimensions": {"survival": {"confidence": "none", "requires": ["income_statement", "balance_sheet"]}},
+        }
+
+        def fake_scan_steps(_: str, step_map: dict[str, object], **__: object) -> dict[str, dict]:
+            if "income_statement" in step_map or "balance_sheet" in step_map:
+                return {"income_statement": {"data": []}, "balance_sheet": {"data": []}}
+            return PartialRadarFlowTests()._partial_scan_data_real_keys()
+
+        def fake_candidate_payload(stock_code: str, company_name: str, _: dict[str, object]) -> dict[str, object]:
+            if stock_code == "600348":
+                return {
+                    "ticker": stock_code,
+                    "company_name": company_name,
+                    "position_state": "attack",
+                    "underwrite_score": 78.0,
+                    "realization_score": 82.0,
+                    "floor_protection": 0.95,
+                    "recognition_upside": 0.35,
+                    "score": 10.0,
+                    "hard_veto": False,
+                    "reason": "ok",
+                    "opportunity_type": "Cyclical",
+                    "thesis": "attack first",
+                    "next_step": "deep dive now",
+                    "catalysts": [],
+                    "risks": [],
+                    "why_passed": "axes first",
+                }
+            return {
+                "ticker": stock_code,
+                "company_name": company_name,
+                "position_state": "cold_storage",
+                "underwrite_score": 90.0,
+                "realization_score": 25.0,
+                "floor_protection": 0.98,
+                "recognition_upside": 0.10,
+                "score": 99.0,
+                "hard_veto": False,
+                "reason": "ok",
+                "opportunity_type": "Cyclical",
+                "thesis": "legacy score only",
+                "next_step": "watch",
+                "catalysts": [],
+                "risks": [],
+                "why_passed": "legacy score",
+            }
+
+        with patch.object(radar_scan_engine, "_load_universe", return_value=universe):
+            with patch.object(radar_scan_engine, "run_named_scan_steps", side_effect=fake_scan_steps, create=True):
+                with patch.object(radar_scan_engine, "evaluate_partial_gate_dimensions", return_value=partial_gate, create=True):
+                    with patch.object(radar_scan_engine, "_candidate_payload", side_effect=fake_candidate_payload, create=True):
+                        with patch.object(radar_scan_engine, "generate_market_scan_report", return_value={"report_path": "report.md"}, create=True):
+                            result = radar_scan_engine.run_radar_scan("A-share", limit=2, max_workers_override=1)
+
+        self.assertEqual([item["ticker"] for item in result["ranked"]], ["600348", "600328"])
+        self.assertEqual([item["ticker"] for item in result["priority_shortlist"]], ["600348"])
 
 
 class VCRFEndToEndSmokeTests(unittest.TestCase):
@@ -1693,6 +1778,28 @@ class VCRFDriverStackTests(unittest.TestCase):
             ),
         }
 
+    def _asset_play_scan_data(self) -> dict[str, dict]:
+        return {
+            "company_profile": {"data": {"行业": "银行", "主营业务": "商业银行业务与REIT资产盘活", "股票简称": "测试银行"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": "利息净收入", "主营收入": 90, "收入比例": 90}]},
+            "valuation_history": {"data": {"pb": 0.72, "pb_percentile": 12}},
+            "stock_kline": {"data": {"current_vs_5yr_high": 58.0}},
+            "realtime_quote": {"data": {"总市值": 40_000_000_000, "最新价": 8.0}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 3_000_000_000}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 50_000_000_000}]},
+        }
+
+    def _port_asset_play_scan_data(self) -> dict[str, dict]:
+        return {
+            "company_profile": {"data": {"行业": "港口", "主营业务": "港口运营与REIT资产盘活", "股票简称": "测试港口"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": "港口装卸", "主营收入": 90, "收入比例": 90}]},
+            "valuation_history": {"data": {"pb": 0.78, "pb_percentile": 15}},
+            "stock_kline": {"data": {"current_vs_5yr_high": 55.0}},
+            "realtime_quote": {"data": {"总市值": 25_000_000_000, "最新价": 6.5}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 2_000_000_000}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 30_000_000_000}]},
+        }
+
     def test_sector_route_resolves_from_active_sector_classification(self) -> None:
         from utils.primary_type_router import resolve_sector_route
 
@@ -1715,6 +1822,20 @@ class VCRFDriverStackTests(unittest.TestCase):
             big_bath_result={"verdict": "inconclusive"},
         )
         self.assertEqual(primary_type, "turnaround")
+        self.assertGreaterEqual(confidence, 0.75)
+
+    def test_asset_play_routing_triggers_when_nav_discount_and_unlock_path_exist(self) -> None:
+        from utils.primary_type_router import determine_primary_type
+
+        primary_type, confidence = determine_primary_type(
+            sector_route="financial_asset",
+            preliminary_cycle_state="repair",
+            financials_3y={"losses_2y": False, "repair_evidence": False, "deep_discount_to_nav": True},
+            tags=[],
+            events={"asset_unlock_path": True},
+            big_bath_result={"verdict": "inconclusive"},
+        )
+        self.assertEqual(primary_type, "asset_play")
         self.assertGreaterEqual(confidence, 0.75)
 
     def test_missing_survival_boundary_caps_state_at_cold_storage(self) -> None:
@@ -1755,6 +1876,32 @@ class VCRFDriverStackTests(unittest.TestCase):
         self.assertEqual(driver_stack["big_bath_result"]["verdict"], "genuine_collapse")
         self.assertEqual(driver_stack["modifiers"]["cycle_state"], "peak")
 
+    def test_build_driver_stack_detects_asset_play_when_discount_and_unlock_keywords_align(self) -> None:
+        from utils.primary_type_router import build_driver_stack
+
+        driver_stack = build_driver_stack("601000", self._asset_play_scan_data())
+        self.assertEqual(driver_stack["sector_route"], "financial_asset")
+        self.assertEqual(driver_stack["primary_type"], "asset_play")
+        self.assertEqual(driver_stack["modifiers"]["realization_path"], "asset_unlock")
+
+    def test_build_driver_stack_prefers_asset_play_for_port_asset_unlock_cases(self) -> None:
+        from utils.primary_type_router import build_driver_stack
+
+        driver_stack = build_driver_stack("600018", self._port_asset_play_scan_data())
+        self.assertEqual(driver_stack["sector_route"], "rigid_shovel")
+        self.assertEqual(driver_stack["primary_type"], "asset_play")
+        self.assertEqual(driver_stack["modifiers"]["realization_path"], "asset_unlock")
+
+    def test_build_driver_stack_detects_institutional_entry_realization_path(self) -> None:
+        from utils.primary_type_router import build_driver_stack
+
+        driver_stack = build_driver_stack(
+            "600348",
+            self._resource_scan_data(),
+            extra_texts=["控股股东增持，战略投资者入股，触发举牌预期"],
+        )
+        self.assertEqual(driver_stack["modifiers"]["realization_path"], "institutional_entry")
+
     def test_build_driver_stack_marks_low_confidence_trough_when_margin_declines(self) -> None:
         from utils.primary_type_router import build_driver_stack
 
@@ -1775,7 +1922,7 @@ class VCRFDriverStackTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"A_STOCK_VALIDATE_MODIFIERS": "1"}, clear=False):
             with patch.object(primary_type_router_module, "_infer_realization_path", return_value="invalid-path"):
-                with self.assertRaises(AssertionError):
+                with self.assertRaises(ValueError):
                     primary_type_router_module.build_driver_stack("600348", self._resource_scan_data())
 
     def test_driver_stack_marks_non_numeric_ticker_as_us_market(self) -> None:

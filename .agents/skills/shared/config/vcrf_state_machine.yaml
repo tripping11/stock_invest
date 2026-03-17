@@ -11,7 +11,7 @@ state_thresholds:
     min_underwrite: 75
     min_realization: 70
   harvest:
-    recognition_upside_max: 0.0
+    recognition_upside_max: -0.05
     crowded_flow_stage: crowded
 
 flow_stage_order:

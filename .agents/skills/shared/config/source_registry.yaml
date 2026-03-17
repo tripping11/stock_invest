@@ -83,3 +83,11 @@ global_rules:
   freshness_days: 180
   fallback_enabled: true
   min_confidence_for_conclusion: medium
+
+us_market:
+  signals:
+    - SEC EDGAR Form 4
+    - 13D/13G
+    - buyback authorization
+  status: placeholder_only
+  note: US market adapters are not implemented yet; these entries document future signal sources.

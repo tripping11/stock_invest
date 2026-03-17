@@ -48,16 +48,42 @@ def _fmt_price(value: Any) -> str:
     return f"{float(value):.2f}"
 
 
+def _sampling_market_cap(record: dict[str, Any]) -> float | None:
+    return safe_float(record.get("float_market_cap")) or safe_float(record.get("market_cap"))
+
+
+def _industry_key(record: dict[str, Any]) -> str:
+    return normalize_text(record.get("industry")) or "unknown"
+
+
 def _cap_bucket(market_cap: float | None) -> str:
     if market_cap is None:
         return "mid"
-    if market_cap < 5_000_000_000:
+    if market_cap < 3_000_000_000:
         return "micro"
-    if market_cap < 20_000_000_000:
+    if market_cap < 15_000_000_000:
         return "small"
     if market_cap < 50_000_000_000:
         return "mid"
     return "large"
+
+
+def _prepare_liquid_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    buckets: dict[str, list[dict[str, Any]]] = {"micro": [], "small": [], "mid": [], "large": []}
+    for record in records:
+        turnover = safe_float(record.get("turnover"))
+        if turnover is not None and turnover < 50_000_000:
+            continue
+        buckets[_cap_bucket(_sampling_market_cap(record))].append(record)
+
+    for bucket_name, bucket_records in buckets.items():
+        bucket_records.sort(
+            key=lambda item: (
+                -(safe_float(item.get("turnover")) or 0.0),
+                _sampling_market_cap(item) or (0.0 if bucket_name != "large" else float("inf")),
+            )
+        )
+    return [item for bucket in buckets.values() for item in bucket]
 
 
 def _layered_sample(records: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
@@ -66,21 +92,10 @@ def _layered_sample(records: list[dict[str, Any]], limit: int) -> list[dict[str,
 
     buckets: dict[str, list[dict[str, Any]]] = {"micro": [], "small": [], "mid": [], "large": []}
     for record in records:
-        turnover = safe_float(record.get("turnover"))
-        if turnover is not None and turnover < 20_000_000:
-            continue
-        buckets[_cap_bucket(safe_float(record.get("market_cap")))].append(record)
-
-    for bucket_name, bucket_records in buckets.items():
-        bucket_records.sort(
-            key=lambda item: (
-                -(safe_float(item.get("turnover")) or 0.0),
-                safe_float(item.get("market_cap")) or (0.0 if bucket_name != "large" else float("inf")),
-            )
-        )
+        buckets[_cap_bucket(_sampling_market_cap(record))].append(record)
 
     selection: list[dict[str, Any]] = []
-    bucket_order = ["micro", "small", "small", "mid", "large"]
+    bucket_order = ["small", "small", "mid", "micro", "small", "large"]
     while len(selection) < limit and any(buckets.values()):
         progressed = False
         for bucket_name in bucket_order:
@@ -99,6 +114,49 @@ def _layered_sample(records: list[dict[str, Any]], limit: int) -> list[dict[str,
     return selection[:limit]
 
 
+def _industry_stratified_sample(records: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    if len(records) <= limit:
+        return records
+
+    liquid_records = _prepare_liquid_records(records)
+    if not liquid_records:
+        liquid_records = list(records)
+
+    by_industry: dict[str, list[dict[str, Any]]] = {}
+    for record in liquid_records:
+        by_industry.setdefault(_industry_key(record), []).append(record)
+
+    industry_order = sorted(
+        by_industry,
+        key=lambda industry: (
+            -(safe_float(by_industry[industry][0].get("turnover")) or 0.0),
+            industry,
+        ),
+    )
+    queues = {
+        industry: _layered_sample(records_for_industry, min(len(records_for_industry), limit))
+        for industry, records_for_industry in by_industry.items()
+    }
+
+    selection: list[dict[str, Any]] = []
+    while len(selection) < limit and any(queues.values()):
+        progressed = False
+        for industry in industry_order:
+            if not queues[industry]:
+                continue
+            selection.append(queues[industry].pop(0))
+            progressed = True
+            if len(selection) >= limit:
+                break
+        if not progressed:
+            break
+
+    if len(selection) < limit:
+        remainder = [item for industry in industry_order for item in queues[industry]]
+        selection.extend(remainder[: limit - len(selection)])
+    return selection[:limit]
+
+
 def _normalize_universe_records(records: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
     normalized = []
     for item in records:
@@ -111,11 +169,13 @@ def _normalize_universe_records(records: list[dict[str, Any]], limit: int) -> li
                 "code": code,
                 "name": name or code,
                 "market_cap": safe_float(item.get("market_cap")),
+                "float_market_cap": safe_float(item.get("float_market_cap")),
                 "turnover": safe_float(item.get("turnover")),
+                "industry": normalize_text(item.get("industry")) or "unknown",
                 "special_tags": list(item.get("special_tags", [])),
             }
         )
-    return _layered_sample(normalized, limit)
+    return _industry_stratified_sample(normalized, limit)
 
 
 def _load_universe(scope: str, limit: int) -> list[dict[str, Any]]:
@@ -128,8 +188,10 @@ def _load_universe(scope: str, limit: int) -> list[dict[str, Any]]:
         columns = [str(col) for col in df.columns]
         code_col = _pick_column(columns, ("代码", "股票代码"), contains=("代码",))
         name_col = _pick_column(columns, ("名称", "股票简称"), contains=("名称",))
-        cap_col = _pick_column(columns, ("总市值",), contains=("市", "值"))
+        float_cap_col = _pick_column(columns, ("流通市值", "流通A股市值"), contains=("流通", "市值"))
+        cap_col = _pick_column(columns, ("总市值",), contains=("总", "市值"))
         turnover_col = _pick_column(columns, ("成交额", "成交额(元)"), contains=("成交", "额"))
+        industry_col = _pick_column(columns, ("行业", "所属行业", "申万行业", "申万一级行业"), contains=("行业",))
         if not code_col or not name_col:
             raise RuntimeError("unable to resolve universe columns from stock_zh_a_spot_em")
 
@@ -142,7 +204,9 @@ def _load_universe(scope: str, limit: int) -> list[dict[str, Any]]:
                     "code": str(row[code_col]).split(".", 1)[0].zfill(6),
                     "name": name,
                     "market_cap": safe_float(row[cap_col]) if cap_col else None,
+                    "float_market_cap": safe_float(row[float_cap_col]) if float_cap_col else None,
                     "turnover": safe_float(row[turnover_col]) if turnover_col else None,
+                    "industry": normalize_text(row[industry_col]) if industry_col else "unknown",
                     "special_tags": special_tags,
                 }
             )
@@ -157,7 +221,9 @@ def _load_universe(scope: str, limit: int) -> list[dict[str, Any]]:
                     "code": str(row.get("code", "")).split(".", 1)[0].zfill(6),
                     "name": name,
                     "market_cap": None,
+                    "float_market_cap": None,
                     "turnover": None,
+                    "industry": "unknown",
                     "special_tags": ["special_situation"] if "ST" in name.upper() else [],
                 }
             )
@@ -177,10 +243,32 @@ def _coarse_filter_universe(universe: list[dict[str, Any]], limit: int) -> list[
         key=lambda item: (
             len(item.get("special_tags", [])),
             -(safe_float(item.get("turnover")) or 0.0),
-            safe_float(item.get("market_cap")) or float("inf"),
+            _sampling_market_cap(item) or float("inf"),
         ),
     )
     return ordered[:coarse_limit]
+
+
+def _position_state_rank(position_state: str) -> int:
+    return {
+        "attack": 4,
+        "ready": 3,
+        "cold_storage": 2,
+        "harvest": 1,
+        "reject": 0,
+    }.get(normalize_text(position_state).lower(), 0)
+
+
+def _ranked_payload_sort_key(result: dict[str, Any]) -> tuple[float, ...]:
+    payload = result.get("payload", {}) or {}
+    return (
+        -_position_state_rank(payload.get("position_state", "reject")),
+        -(safe_float(payload.get("underwrite_score")) or 0.0),
+        -(safe_float(payload.get("realization_score")) or 0.0),
+        -(safe_float(payload.get("floor_protection")) or -1.0),
+        -(safe_float(payload.get("recognition_upside")) or -999.0),
+        int(result.get("order_index", 0)),
+    )
 
 
 def _candidate_payload(stock_code: str, company_name: str, scan_data: dict[str, Any]) -> dict[str, Any]:
@@ -191,7 +279,8 @@ def _candidate_payload(stock_code: str, company_name: str, scan_data: dict[str, 
     )
     gate_result = evaluate_universal_gates(stock_code, scan_data, opportunity_context=opportunity)
     valuation_result = build_three_case_valuation(stock_code, scan_data, gate_result.get("driver_stack", opportunity))
-    score = gate_result.get("scorecard", {}).get("total", 0)
+    underwrite_score = safe_float(gate_result.get("underwrite_axis", {}).get("score")) or 0.0
+    realization_score = safe_float(gate_result.get("realization_axis", {}).get("score")) or 0.0
     signals = gate_result.get("signals", {})
     failed_gates = [
         f"{gate_name}: {gate['reason']}"
@@ -205,13 +294,15 @@ def _candidate_payload(stock_code: str, company_name: str, scan_data: dict[str, 
         "opportunity_type": opportunity.get("primary_label", "Unknown"),
         "primary_type": gate_result.get("driver_stack", {}).get("primary_type", opportunity.get("primary_type")),
         "sector_route": gate_result.get("driver_stack", {}).get("sector_route"),
-        "score": score,
+        "score": underwrite_score,
+        "underwrite_score": underwrite_score,
+        "realization_score": realization_score,
         "hard_veto": bool(gate_result.get("hard_vetos")),
         "position_state": gate_result.get("position_state", "reject"),
         "prev_state": gate_result.get("prev_state", "NEW"),
         "flow_stage": gate_result.get("flow_stage", "latent"),
         "thesis": opportunity.get("sentence", "No clean thesis."),
-        "mispricing": f"base case {_fmt_price(valuation_result.get('base_case', {}).get('implied_price'))} vs current {_fmt_price(valuation_result.get('current_price'))}",
+        "mispricing": f"normalized case {_fmt_price(valuation_result.get('normalized_case', {}).get('implied_price'))} vs current {_fmt_price(valuation_result.get('current_price'))}",
         "floor_protection": valuation_result.get("summary", {}).get("floor_protection"),
         "normalized_upside": valuation_result.get("summary", {}).get("normalized_upside"),
         "recognition_upside": valuation_result.get("summary", {}).get("recognition_upside"),
@@ -402,14 +493,13 @@ def run_radar_scan(
         for future in as_completed(futures):
             ranked_with_order.append(future.result())
 
-    ranked_with_order.sort(key=lambda item: (-float(item["payload"].get("score", 0.0)), int(item.get("order_index", 0))))
+    ranked_with_order.sort(key=_ranked_payload_sort_key)
     ranked = [item["payload"] for item in ranked_with_order]
     priority = [
         item
         for item in ranked
         if item.get("position_state") in {"ready", "attack"}
         and not item.get("hard_veto")
-        and float(item.get("score", 0.0)) >= priority_cutoff
     ]
     secondary = [
         item
