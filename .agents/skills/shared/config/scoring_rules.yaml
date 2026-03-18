@@ -87,3 +87,23 @@ verdict:
   - range: "0-64.99"
     label: "reject / no action"
     action: "do not allocate capital"
+
+elasticity_model:
+  free_float_cap_curve:
+    low_cutoff: 5000000000
+    mid_cutoff: 10000000000
+    upper_mid_cutoff: 20000000000
+    high_cutoff: 30000000000
+    low_score: 100
+    mid_score: 80
+    upper_mid_score: 50
+    high_score: 10
+  liquidity:
+    hard_floor_20d: 15000000
+    soft_floor_20d: 50000000
+  crowding_penalty:
+    crowded: 15
+    trend: 6
+    ignition: 2
+    latent: 0
+    abandoned: 0

@@ -7,6 +7,7 @@ from typing import Any
 from utils.config_loader import load_sector_classification
 from utils.financial_snapshot import (
     extract_latest_revenue_terms,
+    extract_float_market_cap,
     extract_market_cap,
     get_latest_cashflow_snapshot,
     get_latest_income_snapshot,
@@ -143,7 +144,7 @@ def _derive_big_bath_features(scan_data: dict[str, Any]) -> dict[str, Any]:
     latest_income_row = latest_income.get("raw", {}) or {}
     impairment_total = 0.0
     impairment_present = False
-    for key in ("资产减值损失", "信用减值损失", "资产减值准备"):
+    for key in ("资产减值损失", "信用减值损失", "资产减值准备", "商誉减值损失", "商誉减值准备"):
         value = safe_float(latest_income_row.get(key))
         if value is None:
             continue
@@ -330,7 +331,8 @@ def _infer_realization_path(texts: list[str]) -> str:
 
 
 def _elasticity_bucket(scan_data: dict[str, Any]) -> str:
-    market_cap = extract_market_cap(scan_data.get("realtime_quote", {}).get("data", {}))
+    quote = scan_data.get("realtime_quote", {}).get("data", {})
+    market_cap = extract_float_market_cap(quote) or extract_market_cap(quote)
     if market_cap is None:
         return "mid"
     if market_cap < 5_000_000_000:

@@ -64,6 +64,14 @@ def extract_market_cap(quote: dict[str, Any]) -> float | None:
     return None
 
 
+def extract_float_market_cap(quote: dict[str, Any]) -> float | None:
+    for key, value in quote.items():
+        key_text = normalize_text(key)
+        if "流通市值" in key_text or key_text.lower() in {"float_market_cap", "free_float_market_cap"}:
+            return safe_float(value)
+    return None
+
+
 def extract_latest_price(quote: dict[str, Any], kline: dict[str, Any] | None = None) -> float | None:
     for key, value in quote.items():
         key_text = normalize_text(key)
@@ -138,6 +146,26 @@ def extract_short_term_interest_bearing_debt(balance_row: dict[str, Any]) -> flo
     )
 
 
+def extract_short_term_debt_wall(balance_row: dict[str, Any]) -> float | None:
+    total = 0.0
+    found = False
+    for key in (
+        "短期借款",
+        "一年内到期的非流动负债",
+        "应付短期融资款",
+        "短期应付债券",
+        "短期融资券",
+    ):
+        value = safe_float(balance_row.get(key))
+        if value is None:
+            continue
+        found = True
+        total += value
+    if found:
+        return total
+    return extract_short_term_interest_bearing_debt(balance_row)
+
+
 def extract_cash_and_equivalents(balance_row: dict[str, Any]) -> float | None:
     return safe_float(
         extract_first_value(
@@ -147,6 +175,21 @@ def extract_cash_and_equivalents(balance_row: dict[str, Any]) -> float | None:
                 "现金及现金等价物余额",
                 "货币资金(元)",
                 "cash_and_equivalents",
+            ),
+        )
+    )
+
+
+def extract_trading_financial_assets(balance_row: dict[str, Any]) -> float | None:
+    return safe_float(
+        extract_first_value(
+            balance_row,
+            (
+                "交易性金融资产",
+                "交易性金融资产(元)",
+                "衍生金融资产",
+                "其他流动金融资产",
+                "tradable_financial_assets",
             ),
         )
     )

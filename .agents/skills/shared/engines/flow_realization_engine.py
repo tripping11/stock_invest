@@ -4,8 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from utils.config_loader import load_vcrf_state_machine, resolve_vcrf_weight_template
-from utils.financial_snapshot import extract_latest_price, extract_market_cap
+from utils.config_loader import load_scoring_rules, load_vcrf_state_machine, resolve_vcrf_weight_template
+from utils.financial_snapshot import extract_float_market_cap, extract_latest_price, extract_market_cap
 from utils.vcrf_state_utils import classify_vcrf_position_state
 from utils.value_utils import clamp, normalize_text, safe_float
 
@@ -14,6 +14,7 @@ FLOW_STAGE_ORDER = {
     str(name): int(rank)
     for name, rank in (load_vcrf_state_machine().get("flow_stage_order", {}) or {}).items()
 }
+ELASTICITY_MODEL = (load_scoring_rules().get("elasticity_model", {}) or {})
 
 REPAIR_STATE_SCORE = {
     "none": 20,
@@ -81,6 +82,56 @@ def _component_payload(
     if extra:
         payload.update(extra)
     return payload
+
+
+def _linear_interpolate(value: float, *, left: float, right: float, left_score: float, right_score: float) -> float:
+    if right <= left:
+        return left_score
+    ratio = (value - left) / (right - left)
+    return left_score + ratio * (right_score - left_score)
+
+
+def _continuous_float_cap_score(float_market_cap: float | None, fallback_bucket: str) -> float:
+    if float_market_cap is None:
+        return float(_ELASTICITY_BUCKET_SCORE.get(fallback_bucket, 60))
+
+    curve = ELASTICITY_MODEL.get("free_float_cap_curve", {}) or {}
+    low_cutoff = float(curve.get("low_cutoff", 5_000_000_000))
+    mid_cutoff = float(curve.get("mid_cutoff", 10_000_000_000))
+    upper_mid_cutoff = float(curve.get("upper_mid_cutoff", 20_000_000_000))
+    high_cutoff = float(curve.get("high_cutoff", 30_000_000_000))
+    low_score = float(curve.get("low_score", 100))
+    mid_score = float(curve.get("mid_score", 80))
+    upper_mid_score = float(curve.get("upper_mid_score", 50))
+    high_score = float(curve.get("high_score", 10))
+
+    if float_market_cap <= low_cutoff:
+        return low_score
+    if float_market_cap <= mid_cutoff:
+        return _linear_interpolate(
+            float_market_cap,
+            left=low_cutoff,
+            right=mid_cutoff,
+            left_score=low_score,
+            right_score=mid_score,
+        )
+    if float_market_cap <= upper_mid_cutoff:
+        return _linear_interpolate(
+            float_market_cap,
+            left=mid_cutoff,
+            right=upper_mid_cutoff,
+            left_score=mid_score,
+            right_score=upper_mid_score,
+        )
+    if float_market_cap <= high_cutoff:
+        return _linear_interpolate(
+            float_market_cap,
+            left=upper_mid_cutoff,
+            right=high_cutoff,
+            left_score=upper_mid_score,
+            right_score=high_score,
+        )
+    return high_score
 
 
 def score_flow_setup(inputs: FlowInputs) -> dict[str, Any]:
@@ -282,6 +333,9 @@ def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, A
     kline = scan_data.get("stock_kline", {}).get("data", {})
     level1_score, volume_ratio_score, drawdown_rebound_score, turnover_expansion_score = _flow_level1_score(kline)
     event_signals = scan_data.get("event_signals", {}) or {}
+    pulse_events_30d = int(safe_float(kline.get("pulse_volume_events_30d")) or 0)
+    drawdown = safe_float(kline.get("drawdown_from_5yr_high_pct")) or 0.0
+    left_side_absorption = pulse_events_30d >= 2 and drawdown >= 50.0
     level2_bonus = 0.0
     if event_signals.get("buyback"):
         level2_bonus += 7.0
@@ -290,8 +344,12 @@ def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, A
     if event_signals.get("asset_unlock") or event_signals.get("restructuring"):
         level2_bonus += 7.0
     score = clamp(level1_score + level2_bonus, 0, 100)
+    if left_side_absorption:
+        score = max(score, 92.0)
     flow_stage = "latent"
-    if score >= 85:
+    if left_side_absorption:
+        flow_stage = "trend"
+    elif score >= 85:
         flow_stage = "crowded"
     elif score >= 70:
         flow_stage = "trend"
@@ -308,6 +366,8 @@ def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, A
             "volume_ratio_score": volume_ratio_score,
             "drawdown_rebound_score": drawdown_rebound_score,
             "turnover_expansion_score": turnover_expansion_score,
+            "pulse_volume_events_30d": pulse_events_30d,
+            "left_side_absorption": left_side_absorption,
             "event_signals": sorted(event_signals.keys()),
         },
         extra={"flow_stage": flow_stage},
@@ -316,26 +376,46 @@ def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, A
 
 def score_elasticity(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
     bucket = normalize_text(driver_stack.get("modifiers", {}).get("elasticity_bucket") or "mid").lower() or "mid"
-    size_score = float(_ELASTICITY_BUCKET_SCORE.get(bucket, 60))
+    quote = scan_data.get("realtime_quote", {}).get("data", {})
+    float_market_cap = extract_float_market_cap(quote) or extract_market_cap(quote)
+    size_score = _continuous_float_cap_score(float_market_cap, bucket)
     kline = scan_data.get("stock_kline", {}).get("data", {})
-    turnover = safe_float(kline.get("avg_turnover_1y"))
-    if turnover is None:
-        turnover_score = 50.0
-    elif turnover >= 1_000_000_000:
-        turnover_score = 80.0
-    elif turnover >= 300_000_000:
-        turnover_score = 65.0
-    else:
-        turnover_score = 40.0
+    turnover_20d = safe_float(kline.get("avg_turnover_20d"))
+    turnover = turnover_20d if turnover_20d is not None else safe_float(kline.get("avg_turnover_1y"))
+    liquidity_cfg = ELASTICITY_MODEL.get("liquidity", {}) or {}
+    hard_floor = float(liquidity_cfg.get("hard_floor_20d", 15_000_000))
+    soft_floor = float(liquidity_cfg.get("soft_floor_20d", 50_000_000))
     flow_stage = normalize_text(driver_stack.get("modifiers", {}).get("flow_stage") or "latent").lower() or "latent"
-    crowding_penalty = 80.0 if flow_stage == "crowded" else 40.0 if flow_stage == "trend" else 15.0
-    score = clamp(0.60 * size_score + 0.25 * turnover_score - 0.15 * crowding_penalty, 0, 100)
+    crowding_penalty_cfg = ELASTICITY_MODEL.get("crowding_penalty", {}) or {}
+    crowding_penalty = float(crowding_penalty_cfg.get(flow_stage, 0.0))
+    if turnover is None:
+        liquidity_score = 55.0
+    elif turnover < hard_floor:
+        liquidity_score = 5.0
+    elif turnover < soft_floor:
+        liquidity_score = 55.0
+    elif turnover >= 300_000_000:
+        liquidity_score = 90.0
+    else:
+        liquidity_score = 75.0
+    if turnover is not None and turnover < hard_floor:
+        score = 15.0
+    else:
+        score = clamp(0.85 * size_score + 0.15 * liquidity_score - crowding_penalty, 0, 100)
     return _component_payload(
         score,
         availability="full",
         confidence="partial",
-        reason=f"bucket={bucket}, turnover={turnover}, crowding_penalty={crowding_penalty}",
-        inputs_used={"bucket": bucket, "avg_turnover_1y": turnover, "flow_stage": flow_stage},
+        reason=(
+            f"float_market_cap={float_market_cap}, bucket={bucket}, avg_turnover_20d={turnover_20d}, "
+            f"crowding_penalty={crowding_penalty}"
+        ),
+        inputs_used={
+            "bucket": bucket,
+            "float_market_cap": float_market_cap,
+            "avg_turnover_20d": turnover_20d,
+            "flow_stage": flow_stage,
+        },
     )
 
 

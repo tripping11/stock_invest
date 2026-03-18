@@ -72,7 +72,7 @@ def _prepare_liquid_records(records: list[dict[str, Any]]) -> list[dict[str, Any
     buckets: dict[str, list[dict[str, Any]]] = {"micro": [], "small": [], "mid": [], "large": []}
     for record in records:
         turnover = safe_float(record.get("turnover"))
-        if turnover is not None and turnover < 50_000_000:
+        if turnover is not None and turnover < 15_000_000:
             continue
         buckets[_cap_bucket(_sampling_market_cap(record))].append(record)
 

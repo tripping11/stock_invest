@@ -176,6 +176,7 @@ def _resolve_gate_context(
     business_text = normalize_text(profile.get("主营业务") or profile.get("经营范围"))
     driver_stack = build_driver_stack(stock_code, scan_data, extra_texts=extra_texts)
     merged_opportunity = _merge_opportunity_context(resolved_opportunity, driver_stack)
+    survival_probe = assess_survival_boundary(scan_data, driver_stack)
 
     return {
         "stock_code": stock_code,
@@ -202,6 +203,7 @@ def _resolve_gate_context(
         "pb": pb,
         "business_text": business_text,
         "driver_stack": driver_stack,
+        "_survival_probe": survival_probe,
         "_valuation_result": None,
     }
 
@@ -225,7 +227,7 @@ def _survival_score(context: dict[str, Any]) -> float:
     if not driver_stack:
         logger.warning("survival bridge fallback for %s: missing driver_stack", context.get("stock_code"))
         return 5.0
-    survival_probe = assess_survival_boundary(context["scan_data"], driver_stack)
+    survival_probe = context.get("_survival_probe") or assess_survival_boundary(context["scan_data"], driver_stack)
     raw_score = safe_float((survival_probe or {}).get("score"))
     if raw_score is None:
         logger.warning("survival bridge fallback for %s: missing raw survival score", context.get("stock_code"))
@@ -476,6 +478,8 @@ def evaluate_partial_gate_dimensions(
         blocked_hard_vetos.append("balance sheet survival is questionable")
     elif context["latest_balance"].get("total_equity") is not None and context["latest_balance"].get("total_equity") <= 0:
         decidable_hard_vetos.append("balance sheet survival is questionable")
+    elif bool((context.get("_survival_probe") or {}).get("tripwire_reject")):
+        decidable_hard_vetos.append("debt wall coverage fails survival tripwire")
 
     known_total = round(sum(item["score"] for item in dimensions.values()), 2)
     unknown_ceiling = round(
@@ -518,6 +522,8 @@ def evaluate_universal_gates(
         hard_vetos.append("normal earning power cannot be estimated")
     if context["latest_balance"].get("total_equity") is not None and context["latest_balance"].get("total_equity") <= 0:
         hard_vetos.append("balance sheet survival is questionable")
+    if bool((context.get("_survival_probe") or {}).get("tripwire_reject")):
+        hard_vetos.append("debt wall coverage fails survival tripwire")
     if context["management"]["score"] <= 2 and context["management"]["red_flags"]:
         hard_vetos.append("management credibility is materially impaired")
 

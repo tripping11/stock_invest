@@ -6,3 +6,4 @@ PyYAML
 pypdf
 pywencai
 requests
+tushare

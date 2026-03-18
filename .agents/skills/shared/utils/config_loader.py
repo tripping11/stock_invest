@@ -50,6 +50,10 @@ def load_vcrf_degradation() -> dict[str, Any]:
     return load_yaml_config("vcrf_degradation.yaml")
 
 
+def load_backtest_protocol() -> dict[str, Any]:
+    return load_yaml_config("backtest_protocol.yaml")
+
+
 def _assert_axis_normalized(weights: dict[str, float], *, tolerance: float) -> None:
     total = sum(float(value) for value in weights.values())
     if abs(total - 1.0) > tolerance:

@@ -6,9 +6,10 @@ from typing import Any
 from utils.config_loader import resolve_vcrf_weight_template
 from utils.financial_snapshot import (
     extract_cash_and_equivalents,
+    extract_trading_financial_assets,
     extract_latest_price,
     extract_market_cap,
-    extract_short_term_interest_bearing_debt,
+    extract_short_term_debt_wall,
     get_latest_balance_snapshot,
     get_latest_cashflow_snapshot,
     get_latest_income_snapshot,
@@ -116,42 +117,73 @@ def assess_survival_boundary(scan_data: dict[str, Any], driver_stack: dict[str, 
     balance_row = balance_snapshot.get("raw", {})
     total_equity = balance_snapshot.get("total_equity")
     total_assets = safe_float(balance_row.get("资产总计") or balance_row.get("总资产"))
-    short_debt = extract_short_term_interest_bearing_debt(balance_row)
+    debt_wall = extract_short_term_debt_wall(balance_row)
     cash = extract_cash_and_equivalents(balance_row)
-    coverage = None if short_debt in (None, 0) else (cashflow / short_debt if cashflow is not None else None)
-    if coverage is None and cashflow is not None and (short_debt in (None, 0)):
-        coverage = 1.5 if cashflow > 0 else 0.0
+    tradable_financial_assets = extract_trading_financial_assets(balance_row) or 0.0
+    liquid_assets = (cash or 0.0) + tradable_financial_assets
+    cash_coverage = None if debt_wall in (None, 0) else (liquid_assets / debt_wall)
+    cfo_support = None if debt_wall in (None, 0) else (cashflow / debt_wall if cashflow is not None else None)
+    if cash_coverage is None and liquid_assets > 0 and debt_wall in (None, 0):
+        cash_coverage = 2.0
+    if cfo_support is None and cashflow is not None and debt_wall in (None, 0):
+        cfo_support = 1.5 if cashflow > 0 else 0.0
     net_cash_ratio = None
-    if total_assets not in (None, 0) and cash is not None and short_debt is not None:
-        net_cash_ratio = (cash - short_debt) / total_assets
-    z_score = _approx_altman_z(total_assets, total_equity, income_snapshot.get("net_profit"), cash, short_debt)
+    if total_assets not in (None, 0) and debt_wall is not None:
+        net_cash_ratio = (liquid_assets - debt_wall) / total_assets
+    z_score = _approx_altman_z(total_assets, total_equity, income_snapshot.get("net_profit"), liquid_assets, debt_wall)
     equity_positive = total_equity is not None and total_equity > 0
+    controller_text = " ".join(
+        normalize_text(value)
+        for value in [
+            scan_data.get("company_profile", {}).get("data", {}).get("实际控制人"),
+            scan_data.get("company_profile", {}).get("data", {}).get("控股股东"),
+        ]
+        if value
+    )
+    state_owned_support = any(token in controller_text for token in ("国资", "国有", "国务院", "财政", "地方政府", "国资委", "SASAC"))
+    tripwire_reject = bool(
+        debt_wall not in (None, 0)
+        and cash_coverage is not None
+        and cash_coverage < 0.80
+        and not state_owned_support
+    )
 
     score = (
-        _banded_score(coverage, [(0.50, 10), (1.00, 25), (1.50, 35)])
-        + _banded_score(net_cash_ratio, [(-0.10, 5), (0.00, 15), (0.10, 25)])
+        _banded_score(cash_coverage, [(0.40, 6), (0.80, 15), (1.00, 25), (1.50, 35)])
+        + _banded_score(cfo_support, [(0.00, 5), (0.20, 10), (0.50, 15), (1.00, 20)])
+        + _banded_score(net_cash_ratio, [(-0.10, 4), (0.00, 12), (0.10, 20)])
         + _banded_score(z_score, [(1.10, 8), (1.80, 15), (3.00, 20)])
-        + (20 if equity_positive else 0)
+        + (5 if equity_positive else 0)
     )
-    availability = "full" if cashflow is not None and total_equity is not None else "missing"
+    if tripwire_reject:
+        score = min(score, 20.0)
+    availability = "full" if cash is not None and total_equity is not None and debt_wall is not None else "missing"
     confidence = "full" if availability == "full" else "degraded"
     return _component_payload(
         score,
         availability=availability,
         confidence=confidence,
-        reason=f"coverage={coverage}, net_cash_ratio={net_cash_ratio}, z_score={z_score}, equity_positive={equity_positive}",
+        reason=(
+            f"cash_coverage={cash_coverage}, cfo_support={cfo_support}, net_cash_ratio={net_cash_ratio}, "
+            f"z_score={z_score}, equity_positive={equity_positive}, tripwire_reject={tripwire_reject}"
+        ),
         inputs_used={
             "operating_cashflow": cashflow,
-            "short_term_interest_bearing_debt": short_debt,
+            "short_term_debt_wall": debt_wall,
             "cash_and_equivalents": cash,
+            "trading_financial_assets": tradable_financial_assets,
             "total_assets": total_assets,
             "total_equity": total_equity,
         },
         extra={
-            "coverage": coverage,
+            "coverage": cash_coverage,
+            "cash_coverage": cash_coverage,
+            "cfo_support": cfo_support,
             "net_cash_ratio": net_cash_ratio,
             "z_score": z_score,
             "equity_positive": equity_positive,
+            "state_owned_support": state_owned_support,
+            "tripwire_reject": tripwire_reject,
         },
     )
 
@@ -171,7 +203,7 @@ def assess_governance_anti_fraud(scan_data: dict[str, Any], driver_stack: dict[s
     balance_row = balance_snapshot.get("raw", {})
     total_assets = safe_float(balance_row.get("资产总计") or balance_row.get("总资产"))
     cash = extract_cash_and_equivalents(balance_row)
-    short_debt = extract_short_term_interest_bearing_debt(balance_row)
+    short_debt = extract_short_term_debt_wall(balance_row)
 
     score = 100.0
     if any(token in text for token in ("保留意见", "无法表示意见", "否定意见")):

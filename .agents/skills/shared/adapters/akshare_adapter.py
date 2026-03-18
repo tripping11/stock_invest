@@ -157,6 +157,15 @@ def _estimate_consolidation_months(monthly_closes: pd.Series) -> int:
     return months
 
 
+def _count_pulse_volume_events(close_series: pd.Series, volume_series: pd.Series) -> int:
+    if close_series is None or volume_series is None or len(close_series) < 121 or len(volume_series) < 121:
+        return 0
+    rolling_volume = volume_series.rolling(120).mean().shift(1)
+    daily_returns = close_series.pct_change()
+    pulse_mask = (volume_series > rolling_volume * 2.5) & daily_returns.between(-0.02, 0.04, inclusive="both")
+    return int(pulse_mask.tail(30).fillna(False).sum())
+
+
 def _is_ok_status(status: Any) -> bool:
     return str(status or "").lower().startswith("ok")
 
@@ -436,10 +445,17 @@ def get_stock_kline(stock_code: str, period: str = "daily", years: int = 5) -> d
                     summary["avg_vol_120d"] = float(recent_vol.tail(120).mean()) if len(recent_vol) >= 120 else None
                     if summary.get("avg_vol_20d") not in (None, 0) and summary.get("avg_vol_120d") not in (None, 0):
                         summary["volume_ratio_20_vs_120"] = round(summary["avg_vol_20d"] / summary["avg_vol_120d"], 2)
-            if amount_col and not recent_252.empty:
-                recent_amount = recent_252["__amount__"].dropna()
-                if not recent_amount.empty:
-                    summary["avg_turnover_1y"] = float(recent_amount.mean())
+                if amount_col and not recent_252.empty:
+                    recent_amount = recent_252["__amount__"].dropna()
+                    if not recent_amount.empty:
+                        summary["avg_turnover_1y"] = float(recent_amount.mean())
+                        summary["avg_turnover_20d"] = float(recent_amount.tail(20).mean()) if len(recent_amount) >= 20 else None
+                        summary["avg_turnover_120d"] = float(recent_amount.tail(120).mean()) if len(recent_amount) >= 120 else None
+                if volume_col and close_col:
+                    summary["pulse_volume_events_30d"] = _count_pulse_volume_events(
+                        ordered["__close__"],
+                        ordered["__volume__"],
+                    )
 
         evidence = _make_evidence(
             "stock_kline",
@@ -491,6 +507,13 @@ def get_stock_kline(stock_code: str, period: str = "daily", years: int = 5) -> d
                         recent_amount = df.tail(252)["amount"].dropna()
                         if not recent_amount.empty:
                             summary["avg_turnover_1y"] = float(recent_amount.mean())
+                            summary["avg_turnover_20d"] = float(recent_amount.tail(20).mean()) if len(recent_amount) >= 20 else None
+                            summary["avg_turnover_120d"] = float(recent_amount.tail(120).mean()) if len(recent_amount) >= 120 else None
+                    if "volume" in df.columns:
+                        summary["pulse_volume_events_30d"] = _count_pulse_volume_events(
+                            df["close"],
+                            df["volume"],
+                        )
                     evidence = _make_evidence(
                         "stock_kline",
                         f"close={summary.get('latest_close', 'N/A')}",
