@@ -1,0 +1,75 @@
+{
+  "tickers": [
+    "000063",
+    "000858",
+    "002027",
+    "002050",
+    "002371",
+    "002475",
+    "002594",
+    "300124",
+    "300308",
+    "300750",
+    "300760",
+    "600036",
+    "600150",
+    "600276",
+    "600438",
+    "600809",
+    "601088",
+    "601138",
+    "601225",
+    "601333",
+    "601899",
+    "601919",
+    "603259",
+    "688041"
+  ],
+  "skipped": [],
+  "rows": {
+    "signals_month_end": 1627,
+    "daily_bars": 34029
+  },
+  "limitations": [
+    "tushare_pit_v1",
+    "requires TUSHARE_TOKEN and a reachable Tushare Pro account",
+    "revenue breakdown depends on fina_mainbz availability per ticker",
+    "order execution still follows the deterministic local backtest protocol"
+  ],
+  "diagnostics": {
+    "vcrf_state_counts": {
+      "REJECT": 1522,
+      "HARVEST": 52,
+      "READY": 31,
+      "COLD_STORAGE": 22
+    },
+    "position_state_counts": {
+      "reject": 1522,
+      "harvest": 52,
+      "ready": 31,
+      "cold_storage": 22
+    },
+    "tradable_flag_counts": {
+      "1": 1627
+    },
+    "attack_gate": {
+      "min_underwrite": 75.0,
+      "min_realization": 70.0
+    },
+    "attack_tradable_rows": 0,
+    "bottleneck_counts": {
+      "underwrite_below_attack": 1589,
+      "realization_below_attack": 1627,
+      "underwrite_pass_realization_fail": 38,
+      "hard_reject_rows": 122
+    },
+    "top_reject_reasons": [
+      {
+        "reason": "debt wall coverage fails survival tripwire",
+        "count": 122
+      }
+    ]
+  },
+  "signals_month_end_path": "reports/backtests/curated24_tushare_inputs/signals_month_end.csv",
+  "daily_bars_path": "reports/backtests/curated24_tushare_inputs/daily_bars.csv"
+}

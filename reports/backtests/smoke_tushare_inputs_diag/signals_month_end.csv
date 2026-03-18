@@ -1,0 +1,210 @@
+signal_date,effective_date,ticker,vcrf_state,floor_price,recognition_price,total_score,tradable_flag,signal_version,underwrite_score,realization_score,position_state,primary_type,sector_route,announcement_date,reject_reason
+2019-03-29,2019-04-01,600328,REJECT,3.03,4.75,42.76,1,tushare_pit_v1,38.78,48.73,reject,compounder,core_resource,2019-03-29,debt wall coverage fails survival tripwire
+2019-03-29,2019-04-01,600893,REJECT,8.6,9.23,36.97,1,tushare_pit_v1,34.08,41.31,reject,compounder,core_military,2019-03-29,debt wall coverage fails survival tripwire
+2019-04-30,2019-05-06,600348,HARVEST,3.66,1.15,57.24,1,tushare_pit_v1,65.24,45.24,harvest,compounder,core_resource,2019-04-30,
+2019-04-30,2019-05-06,600328,REJECT,3.14,1.34,43.68,1,tushare_pit_v1,38.78,51.03,reject,compounder,core_resource,2019-04-30,debt wall coverage fails survival tripwire
+2019-04-30,2019-05-06,600893,REJECT,8.62,1.34,37.67,1,tushare_pit_v1,34.08,43.05,reject,compounder,core_military,2019-04-30,debt wall coverage fails survival tripwire
+2019-05-31,2019-06-03,600348,HARVEST,3.66,1.15,57.41,1,tushare_pit_v1,65.24,45.67,harvest,compounder,core_resource,2019-05-31,
+2019-05-31,2019-06-03,600328,REJECT,3.14,1.34,42.6,1,tushare_pit_v1,38.78,48.33,reject,compounder,core_resource,2019-05-31,debt wall coverage fails survival tripwire
+2019-05-31,2019-06-03,600893,REJECT,8.67,1.34,36.72,1,tushare_pit_v1,34.08,40.68,reject,compounder,core_military,2019-05-31,debt wall coverage fails survival tripwire
+2019-06-28,2019-07-01,600348,HARVEST,3.66,1.15,57.39,1,tushare_pit_v1,65.24,45.62,harvest,compounder,core_resource,2019-06-28,
+2019-06-28,2019-07-01,600328,REJECT,3.21,1.37,42.48,1,tushare_pit_v1,38.78,48.03,reject,compounder,core_resource,2019-06-28,debt wall coverage fails survival tripwire
+2019-06-28,2019-07-01,600893,REJECT,8.67,1.34,36.72,1,tushare_pit_v1,34.08,40.68,reject,compounder,core_military,2019-06-28,debt wall coverage fails survival tripwire
+2019-07-31,2019-08-01,600348,HARVEST,3.84,1.21,57.47,1,tushare_pit_v1,65.24,45.82,harvest,compounder,core_resource,2019-07-31,
+2019-07-31,2019-08-01,600328,REJECT,3.21,1.37,42.6,1,tushare_pit_v1,38.78,48.33,reject,compounder,core_resource,2019-07-31,debt wall coverage fails survival tripwire
+2019-07-31,2019-08-01,600893,REJECT,8.67,1.34,37.2,1,tushare_pit_v1,34.08,41.88,reject,compounder,core_military,2019-07-31,debt wall coverage fails survival tripwire
+2019-08-30,2019-09-02,600348,REJECT,3.85,2.51,53.5,1,tushare_pit_v1,58.86,45.46,reject,compounder,core_resource,2019-08-30,debt wall coverage fails survival tripwire
+2019-08-30,2019-09-02,600328,REJECT,3.26,3.1,45.04,1,tushare_pit_v1,43.38,47.53,reject,compounder,core_resource,2019-08-30,debt wall coverage fails survival tripwire
+2019-08-30,2019-09-02,600893,REJECT,8.68,2.82,36.52,1,tushare_pit_v1,34.08,40.18,reject,compounder,core_military,2019-08-30,debt wall coverage fails survival tripwire
+2019-09-30,2019-10-08,600348,REJECT,3.85,2.51,54.0,1,tushare_pit_v1,58.86,46.72,reject,compounder,core_resource,2019-09-30,debt wall coverage fails survival tripwire
+2019-09-30,2019-10-08,600328,REJECT,3.26,3.1,45.64,1,tushare_pit_v1,43.38,49.03,reject,compounder,core_resource,2019-09-30,debt wall coverage fails survival tripwire
+2019-09-30,2019-10-08,600893,REJECT,8.68,2.82,37.6,1,tushare_pit_v1,34.08,42.88,reject,compounder,core_military,2019-09-30,debt wall coverage fails survival tripwire
+2019-10-31,2019-11-01,600348,READY,3.95,3.95,65.18,1,tushare_pit_v1,77.7,46.41,ready,compounder,core_resource,2019-10-31,
+2019-10-31,2019-11-01,600328,REJECT,3.37,5.31,45.04,1,tushare_pit_v1,43.38,47.53,reject,compounder,core_resource,2019-10-31,debt wall coverage fails survival tripwire
+2019-10-31,2019-11-01,600893,REJECT,9.31,4.09,36.52,1,tushare_pit_v1,34.08,40.18,reject,compounder,core_military,2019-10-31,debt wall coverage fails survival tripwire
+2019-11-29,2019-12-02,600348,READY,3.95,3.95,65.3,1,tushare_pit_v1,77.7,46.69,ready,compounder,core_resource,2019-11-29,
+2019-11-29,2019-12-02,600328,REJECT,3.37,5.31,45.04,1,tushare_pit_v1,43.38,47.53,reject,compounder,core_resource,2019-11-29,debt wall coverage fails survival tripwire
+2019-11-29,2019-12-02,600893,REJECT,9.31,4.09,37.37,1,tushare_pit_v1,34.08,42.3,reject,compounder,core_military,2019-11-29,debt wall coverage fails survival tripwire
+2019-12-31,2020-01-02,600348,READY,3.95,3.95,65.82,1,tushare_pit_v1,77.7,47.99,ready,compounder,core_resource,2019-12-31,
+2019-12-31,2020-01-02,600328,REJECT,3.37,5.31,45.52,1,tushare_pit_v1,43.38,48.73,reject,compounder,core_resource,2019-12-31,debt wall coverage fails survival tripwire
+2019-12-31,2020-01-02,600893,REJECT,9.31,4.09,37.0,1,tushare_pit_v1,34.08,41.38,reject,compounder,core_military,2019-12-31,debt wall coverage fails survival tripwire
+2020-01-23,2020-02-03,600348,READY,3.95,3.95,65.92,1,tushare_pit_v1,77.7,48.26,ready,compounder,core_resource,2020-01-23,
+2020-01-23,2020-02-03,600328,REJECT,1.76,2.78,43.48,1,tushare_pit_v1,38.78,50.53,reject,compounder,core_resource,2020-01-23,debt wall coverage fails survival tripwire
+2020-01-23,2020-02-03,600893,REJECT,9.31,4.09,37.6,1,tushare_pit_v1,34.08,42.88,reject,compounder,core_military,2020-01-23,debt wall coverage fails survival tripwire
+2020-02-28,2020-03-02,600348,READY,3.95,3.95,68.39,1,tushare_pit_v1,78.21,53.65,ready,cyclical,core_resource,2020-02-28,
+2020-02-28,2020-03-02,600328,REJECT,1.76,2.78,44.12,1,tushare_pit_v1,38.78,52.13,reject,compounder,core_resource,2020-02-28,debt wall coverage fails survival tripwire
+2020-02-28,2020-03-02,600893,REJECT,9.31,4.09,38.33,1,tushare_pit_v1,34.08,44.71,reject,compounder,core_military,2020-02-28,debt wall coverage fails survival tripwire
+2020-03-31,2020-04-01,600348,READY,3.95,3.95,67.97,1,tushare_pit_v1,78.21,52.61,ready,cyclical,core_resource,2020-03-31,
+2020-03-31,2020-04-01,600328,REJECT,1.76,2.78,42.88,1,tushare_pit_v1,38.78,49.03,reject,compounder,core_resource,2020-03-31,debt wall coverage fails survival tripwire
+2020-03-31,2020-04-01,600893,REJECT,9.31,4.09,37.69,1,tushare_pit_v1,34.08,43.11,reject,compounder,core_military,2020-03-31,debt wall coverage fails survival tripwire
+2020-04-30,2020-05-06,600348,REJECT,4.05,4.54,61.93,1,tushare_pit_v1,65.21,57.0,reject,cyclical,core_resource,2020-04-30,
+2020-04-30,2020-05-06,600328,REJECT,3.21,6.66,45.84,1,tushare_pit_v1,43.38,49.53,reject,compounder,core_resource,2020-04-30,debt wall coverage fails survival tripwire
+2020-04-30,2020-05-06,600893,REJECT,9.42,9.77,42.94,1,tushare_pit_v1,45.52,39.08,reject,compounder,core_military,2020-04-30,
+2020-05-29,2020-06-01,600348,REJECT,4.05,4.54,62.6,1,tushare_pit_v1,65.21,58.68,reject,cyclical,core_resource,2020-05-29,
+2020-05-29,2020-06-01,600328,REJECT,3.21,6.66,45.24,1,tushare_pit_v1,43.38,48.03,reject,compounder,core_resource,2020-05-29,debt wall coverage fails survival tripwire
+2020-05-29,2020-06-01,600893,REJECT,9.42,9.77,43.58,1,tushare_pit_v1,45.52,40.68,reject,compounder,core_military,2020-05-29,
+2020-06-30,2020-07-01,600348,REJECT,4.31,4.84,62.75,1,tushare_pit_v1,65.21,59.07,reject,cyclical,core_resource,2020-06-30,
+2020-06-30,2020-07-01,600328,REJECT,3.26,6.76,45.24,1,tushare_pit_v1,43.38,48.03,reject,compounder,core_resource,2020-06-30,debt wall coverage fails survival tripwire
+2020-06-30,2020-07-01,600893,REJECT,9.42,9.77,43.58,1,tushare_pit_v1,45.52,40.68,reject,compounder,core_military,2020-06-30,
+2020-07-31,2020-08-03,600348,REJECT,4.31,4.84,61.48,1,tushare_pit_v1,69.2,49.9,reject,compounder,core_resource,2020-07-31,
+2020-07-31,2020-08-03,600893,REJECT,9.46,9.81,44.65,1,tushare_pit_v1,45.52,43.34,reject,compounder,core_military,2020-07-31,
+2020-07-31,2020-08-03,600328,REJECT,3.26,6.76,44.08,1,tushare_pit_v1,38.78,52.03,reject,compounder,core_resource,2020-07-31,debt wall coverage fails survival tripwire
+2020-08-31,2020-09-01,600348,READY,4.26,4.84,60.96,1,tushare_pit_v1,70.3,46.94,ready,compounder,core_resource,2020-08-31,
+2020-08-31,2020-09-01,600328,REJECT,3.69,6.76,46.24,1,tushare_pit_v1,43.38,50.53,reject,compounder,core_resource,2020-08-31,debt wall coverage fails survival tripwire
+2020-08-31,2020-09-01,600893,REJECT,9.47,9.81,38.71,1,tushare_pit_v1,34.08,45.65,reject,compounder,core_military,2020-08-31,debt wall coverage fails survival tripwire
+2020-09-30,2020-10-09,600348,READY,4.26,4.84,60.96,1,tushare_pit_v1,70.3,46.94,ready,compounder,core_resource,2020-09-30,
+2020-09-30,2020-10-09,600328,REJECT,3.76,6.89,48.49,1,tushare_pit_v1,49.13,47.53,reject,compounder,core_resource,2020-09-30,debt wall coverage fails survival tripwire
+2020-09-30,2020-10-09,600893,REJECT,7.99,8.28,37.47,1,tushare_pit_v1,34.08,42.55,reject,compounder,core_military,2020-09-30,debt wall coverage fails survival tripwire
+2020-10-30,2020-11-02,600348,READY,4.53,4.84,64.64,1,tushare_pit_v1,75.4,48.49,ready,compounder,core_resource,2020-10-30,
+2020-10-30,2020-11-02,600328,REJECT,3.78,6.89,50.48,1,tushare_pit_v1,47.63,54.75,reject,cyclical,core_resource,2020-10-30,debt wall coverage fails survival tripwire
+2020-10-30,2020-11-02,600893,REJECT,9.89,8.28,37.83,1,tushare_pit_v1,34.08,43.46,reject,compounder,core_military,2020-10-30,debt wall coverage fails survival tripwire
+2020-11-30,2020-12-01,600348,READY,4.53,4.84,60.28,1,tushare_pit_v1,70.3,45.26,ready,compounder,core_resource,2020-11-30,
+2020-11-30,2020-12-01,600328,REJECT,3.78,6.89,49.12,1,tushare_pit_v1,42.63,58.85,reject,cyclical,core_resource,2020-11-30,debt wall coverage fails survival tripwire
+2020-11-30,2020-12-01,600893,REJECT,9.89,8.28,37.47,1,tushare_pit_v1,34.08,42.55,reject,compounder,core_military,2020-11-30,debt wall coverage fails survival tripwire
+2020-12-31,2021-01-04,600348,READY,4.53,4.84,60.24,1,tushare_pit_v1,70.3,45.14,ready,compounder,core_resource,2020-12-31,
+2020-12-31,2021-01-04,600328,REJECT,3.78,6.89,47.48,1,tushare_pit_v1,42.63,54.75,reject,cyclical,core_resource,2020-12-31,debt wall coverage fails survival tripwire
+2020-12-31,2021-01-04,600893,REJECT,9.89,8.28,36.35,1,tushare_pit_v1,34.08,39.75,reject,compounder,core_military,2020-12-31,debt wall coverage fails survival tripwire
+2021-01-29,2021-02-01,600348,READY,4.53,4.84,64.02,1,tushare_pit_v1,75.4,46.94,ready,compounder,core_resource,2021-01-29,
+2021-01-29,2021-02-01,600328,REJECT,3.78,6.89,48.2,1,tushare_pit_v1,42.63,56.55,reject,cyclical,core_resource,2021-01-29,debt wall coverage fails survival tripwire
+2021-01-29,2021-02-01,600893,REJECT,9.89,8.28,38.77,1,tushare_pit_v1,34.08,45.8,reject,compounder,core_military,2021-01-29,debt wall coverage fails survival tripwire
+2021-02-26,2021-03-01,600348,READY,4.53,4.84,63.53,1,tushare_pit_v1,75.4,45.72,ready,compounder,core_resource,2021-02-26,
+2021-02-26,2021-03-01,600328,REJECT,3.78,6.89,46.88,1,tushare_pit_v1,43.38,52.13,reject,compounder,core_resource,2021-02-26,debt wall coverage fails survival tripwire
+2021-02-26,2021-03-01,600893,REJECT,9.89,8.28,38.28,1,tushare_pit_v1,34.08,44.59,reject,compounder,core_military,2021-02-26,debt wall coverage fails survival tripwire
+2021-03-31,2021-04-01,600348,READY,4.53,4.84,63.95,1,tushare_pit_v1,75.4,46.78,ready,compounder,core_resource,2021-03-31,
+2021-03-31,2021-04-01,600893,REJECT,10.02,9.06,48.87,1,tushare_pit_v1,49.92,47.3,reject,compounder,core_military,2021-03-31,
+2021-03-31,2021-04-01,600328,REJECT,3.78,6.89,46.64,1,tushare_pit_v1,43.38,51.53,reject,compounder,core_resource,2021-03-31,debt wall coverage fails survival tripwire
+2021-04-30,2021-05-06,600348,REJECT,4.33,4.28,59.19,1,tushare_pit_v1,69.2,44.18,reject,compounder,core_resource,2021-04-30,
+2021-04-30,2021-05-06,600893,REJECT,10.03,9.06,46.27,1,tushare_pit_v1,45.52,47.4,reject,compounder,core_military,2021-04-30,
+2021-04-30,2021-05-06,600328,REJECT,4.1,5.92,44.72,1,tushare_pit_v1,43.38,46.73,reject,compounder,core_resource,2021-04-30,debt wall coverage fails survival tripwire
+2021-05-31,2021-06-01,600348,REJECT,4.33,4.28,60.16,1,tushare_pit_v1,69.2,46.59,reject,compounder,core_resource,2021-05-31,
+2021-05-31,2021-06-01,600893,REJECT,10.03,9.06,45.6,1,tushare_pit_v1,45.52,45.71,reject,compounder,core_military,2021-05-31,
+2021-05-31,2021-06-01,600328,REJECT,4.1,5.92,42.77,1,tushare_pit_v1,38.78,48.76,reject,compounder,core_resource,2021-05-31,debt wall coverage fails survival tripwire
+2021-06-30,2021-07-01,600348,REJECT,4.33,4.28,57.75,1,tushare_pit_v1,65.75,45.76,reject,compounder,core_resource,2021-06-30,
+2021-06-30,2021-07-01,600893,REJECT,10.05,9.08,45.6,1,tushare_pit_v1,45.52,45.71,reject,compounder,core_military,2021-06-30,
+2021-06-30,2021-07-01,600328,REJECT,4.18,6.03,42.67,1,tushare_pit_v1,38.78,48.5,reject,compounder,core_resource,2021-06-30,debt wall coverage fails survival tripwire
+2021-07-30,2021-08-02,600348,HARVEST,4.49,4.44,55.7,1,tushare_pit_v1,61.15,47.53,harvest,compounder,core_resource,2021-07-30,
+2021-07-30,2021-08-02,600893,REJECT,10.05,9.08,46.2,1,tushare_pit_v1,45.52,47.21,reject,compounder,core_military,2021-07-30,
+2021-07-30,2021-08-02,600328,REJECT,4.18,6.03,43.68,1,tushare_pit_v1,38.78,51.02,reject,compounder,core_resource,2021-07-30,debt wall coverage fails survival tripwire
+2021-08-31,2021-09-01,600893,REJECT,10.05,9.08,49.04,1,tushare_pit_v1,51.68,45.09,reject,compounder,core_military,2021-08-31,
+2021-08-31,2021-09-01,600348,REJECT,4.45,4.44,44.82,1,tushare_pit_v1,46.2,42.75,reject,compounder,core_resource,2021-08-31,
+2021-08-31,2021-09-01,600328,REJECT,4.37,6.03,41.88,1,tushare_pit_v1,38.78,46.52,reject,compounder,core_resource,2021-08-31,debt wall coverage fails survival tripwire
+2021-09-30,2021-10-08,600893,REJECT,10.05,9.08,48.89,1,tushare_pit_v1,51.68,44.71,reject,compounder,core_military,2021-09-30,
+2021-09-30,2021-10-08,600348,REJECT,4.45,4.44,48.36,1,tushare_pit_v1,50.8,44.71,reject,compounder,core_resource,2021-09-30,
+2021-09-30,2021-10-08,600328,REJECT,4.37,6.03,43.01,1,tushare_pit_v1,38.78,49.35,reject,compounder,core_resource,2021-09-30,debt wall coverage fails survival tripwire
+2021-10-29,2021-11-01,600348,REJECT,4.45,4.44,51.13,1,tushare_pit_v1,51.46,50.63,reject,cyclical,core_resource,2021-10-29,
+2021-10-29,2021-11-01,600893,REJECT,10.19,9.08,47.84,1,tushare_pit_v1,51.68,42.09,reject,compounder,core_military,2021-10-29,
+2021-10-29,2021-11-01,600328,REJECT,4.63,6.03,40.51,1,tushare_pit_v1,31.38,54.2,reject,cyclical,core_resource,2021-10-29,debt wall coverage fails survival tripwire
+2021-11-30,2021-12-01,600348,REJECT,4.41,4.44,52.96,1,tushare_pit_v1,58.71,44.34,reject,cyclical,core_resource,2021-11-30,
+2021-11-30,2021-12-01,600893,REJECT,10.19,9.08,47.84,1,tushare_pit_v1,51.68,42.09,reject,compounder,core_military,2021-11-30,
+2021-11-30,2021-12-01,600328,REJECT,4.63,6.03,40.74,1,tushare_pit_v1,31.38,54.77,reject,cyclical,core_resource,2021-11-30,debt wall coverage fails survival tripwire
+2021-12-31,2022-01-04,600348,REJECT,4.41,4.44,48.36,1,tushare_pit_v1,51.9,43.06,reject,compounder,core_resource,2021-12-31,
+2021-12-31,2022-01-04,600893,REJECT,10.19,9.08,47.84,1,tushare_pit_v1,51.68,42.09,reject,compounder,core_military,2021-12-31,
+2021-12-31,2022-01-04,600328,REJECT,4.63,6.03,40.91,1,tushare_pit_v1,31.38,55.21,reject,cyclical,core_resource,2021-12-31,debt wall coverage fails survival tripwire
+2022-01-28,2022-02-07,600348,REJECT,4.41,4.44,53.22,1,tushare_pit_v1,58.71,44.99,reject,cyclical,core_resource,2022-01-28,
+2022-01-28,2022-02-07,600893,REJECT,10.19,9.08,48.69,1,tushare_pit_v1,51.68,44.21,reject,compounder,core_military,2022-01-28,
+2022-01-28,2022-02-07,600328,REJECT,4.63,6.03,40.96,1,tushare_pit_v1,31.38,55.33,reject,cyclical,core_resource,2022-01-28,debt wall coverage fails survival tripwire
+2022-02-28,2022-03-01,600893,REJECT,10.19,9.08,48.69,1,tushare_pit_v1,51.68,44.21,reject,compounder,core_military,2022-02-28,
+2022-02-28,2022-03-01,600348,REJECT,4.41,4.44,47.85,1,tushare_pit_v1,51.9,41.77,reject,compounder,core_resource,2022-02-28,
+2022-02-28,2022-03-01,600328,REJECT,4.63,6.03,40.8,1,tushare_pit_v1,31.38,54.92,reject,cyclical,core_resource,2022-02-28,debt wall coverage fails survival tripwire
+2022-03-31,2022-04-01,600893,REJECT,10.19,9.08,49.93,1,tushare_pit_v1,51.68,47.3,reject,compounder,core_military,2022-03-31,
+2022-03-31,2022-04-01,600348,REJECT,4.41,4.44,47.81,1,tushare_pit_v1,51.9,41.68,reject,compounder,core_resource,2022-03-31,
+2022-03-31,2022-04-01,600328,REJECT,4.63,6.03,40.88,1,tushare_pit_v1,31.38,55.13,reject,cyclical,core_resource,2022-03-31,debt wall coverage fails survival tripwire
+2022-04-29,2022-05-05,600348,REJECT,4.44,5.84,51.64,1,tushare_pit_v1,51.46,51.92,reject,cyclical,core_resource,2022-04-29,
+2022-04-29,2022-05-05,600893,REJECT,10.42,10.81,50.25,1,tushare_pit_v1,51.68,48.1,reject,compounder,core_military,2022-04-29,
+2022-04-29,2022-05-05,600328,REJECT,5.13,9.37,49.33,1,tushare_pit_v1,41.13,61.63,reject,cyclical,core_resource,2022-04-29,
+2022-05-31,2022-06-01,600328,REJECT,5.13,9.37,48.47,1,tushare_pit_v1,41.13,59.47,reject,cyclical,core_resource,2022-05-31,
+2022-05-31,2022-06-01,600348,REJECT,4.44,5.84,47.7,1,tushare_pit_v1,50.8,43.05,reject,compounder,core_resource,2022-05-31,
+2022-05-31,2022-06-01,600893,REJECT,10.44,10.81,47.49,1,tushare_pit_v1,47.28,47.8,reject,compounder,core_military,2022-05-31,
+2022-06-30,2022-07-01,600893,REJECT,10.48,10.85,47.93,1,tushare_pit_v1,47.28,48.9,reject,compounder,core_military,2022-06-30,
+2022-06-30,2022-07-01,600328,REJECT,5.25,9.58,47.69,1,tushare_pit_v1,47.36,48.18,reject,compounder,core_resource,2022-06-30,
+2022-06-30,2022-07-01,600348,REJECT,4.44,5.84,44.42,1,tushare_pit_v1,46.2,41.75,reject,compounder,core_resource,2022-06-30,
+2022-07-29,2022-08-01,600328,REJECT,5.19,9.47,48.61,1,tushare_pit_v1,41.13,59.84,reject,cyclical,core_resource,2022-07-29,
+2022-07-29,2022-08-01,600893,REJECT,10.48,10.85,47.25,1,tushare_pit_v1,47.28,47.21,reject,compounder,core_military,2022-07-29,
+2022-07-29,2022-08-01,600348,REJECT,4.6,6.05,44.82,1,tushare_pit_v1,46.2,42.75,reject,compounder,core_resource,2022-07-29,
+2022-08-31,2022-09-01,600348,REJECT,4.81,6.05,48.58,1,tushare_pit_v1,51.26,44.55,reject,compounder,core_resource,2022-08-31,
+2022-08-31,2022-09-01,600328,REJECT,5.42,9.44,48.41,1,tushare_pit_v1,41.13,59.34,reject,cyclical,core_resource,2022-08-31,
+2022-08-31,2022-09-01,600893,REJECT,10.54,10.85,47.29,1,tushare_pit_v1,47.28,47.3,reject,compounder,core_military,2022-08-31,
+2022-09-30,2022-10-10,600328,REJECT,5.42,9.44,52.79,1,tushare_pit_v1,47.13,61.28,reject,cyclical,core_resource,2022-09-30,
+2022-09-30,2022-10-10,600348,REJECT,4.81,6.05,47.98,1,tushare_pit_v1,51.26,43.05,reject,compounder,core_resource,2022-09-30,
+2022-09-30,2022-10-10,600893,REJECT,10.54,10.85,46.81,1,tushare_pit_v1,47.28,46.1,reject,compounder,core_military,2022-09-30,
+2022-10-31,2022-11-01,600328,REJECT,5.67,9.44,57.46,1,tushare_pit_v1,55.38,60.58,reject,cyclical,core_resource,2022-10-31,
+2022-10-31,2022-11-01,600348,REJECT,5.16,6.05,51.38,1,tushare_pit_v1,57.21,42.64,reject,cyclical,core_resource,2022-10-31,
+2022-10-31,2022-11-01,600893,REJECT,10.63,10.85,45.0,1,tushare_pit_v1,45.52,44.21,reject,compounder,core_military,2022-10-31,
+2022-11-30,2022-12-01,600328,REJECT,4.86,8.1,52.03,1,tushare_pit_v1,48.38,57.5,reject,cyclical,core_resource,2022-11-30,
+2022-11-30,2022-12-01,600348,REJECT,5.16,6.05,50.9,1,tushare_pit_v1,57.21,41.44,reject,cyclical,core_resource,2022-11-30,
+2022-11-30,2022-12-01,600893,REJECT,10.63,10.85,45.75,1,tushare_pit_v1,45.52,46.1,reject,compounder,core_military,2022-11-30,
+2022-12-30,2023-01-03,600348,HARVEST,5.16,6.05,55.7,1,tushare_pit_v1,65.21,41.44,harvest,cyclical,core_resource,2022-12-30,
+2022-12-30,2023-01-03,600328,REJECT,4.86,8.1,52.29,1,tushare_pit_v1,48.38,58.16,reject,cyclical,core_resource,2022-12-30,
+2022-12-30,2023-01-03,600893,REJECT,10.63,10.85,45.75,1,tushare_pit_v1,45.52,46.1,reject,compounder,core_military,2022-12-30,
+2023-01-31,2023-02-01,600328,REJECT,4.86,8.1,51.0,1,tushare_pit_v1,48.38,54.93,reject,cyclical,core_resource,2023-01-31,
+2023-01-31,2023-02-01,600348,REJECT,5.16,6.05,50.9,1,tushare_pit_v1,57.21,41.44,reject,cyclical,core_resource,2023-01-31,
+2023-01-31,2023-02-01,600893,REJECT,10.63,10.85,46.23,1,tushare_pit_v1,45.52,47.3,reject,compounder,core_military,2023-01-31,
+2023-02-28,2023-03-01,600348,REJECT,5.16,6.05,51.38,1,tushare_pit_v1,57.21,42.64,reject,cyclical,core_resource,2023-02-28,
+2023-02-28,2023-03-01,600328,REJECT,4.86,8.1,51.08,1,tushare_pit_v1,48.38,55.14,reject,cyclical,core_resource,2023-02-28,
+2023-02-28,2023-03-01,600893,REJECT,10.63,10.85,46.23,1,tushare_pit_v1,45.52,47.3,reject,compounder,core_military,2023-02-28,
+2023-03-31,2023-04-03,600348,HARVEST,5.16,6.05,55.7,1,tushare_pit_v1,65.21,41.44,harvest,cyclical,core_resource,2023-03-31,
+2023-03-31,2023-04-03,600328,REJECT,4.86,8.1,51.18,1,tushare_pit_v1,48.38,55.39,reject,cyclical,core_resource,2023-03-31,
+2023-03-31,2023-04-03,600893,REJECT,10.72,11.05,45.75,1,tushare_pit_v1,45.52,46.1,reject,compounder,core_military,2023-03-31,
+2023-04-28,2023-05-04,600328,REJECT,6.27,12.22,57.69,1,tushare_pit_v1,51.88,66.41,reject,cyclical,core_resource,2023-04-28,
+2023-04-28,2023-05-04,600348,REJECT,5.7,5.99,49.55,1,tushare_pit_v1,50.96,47.44,reject,cyclical,core_resource,2023-04-28,
+2023-04-28,2023-05-04,600893,REJECT,10.72,11.05,46.23,1,tushare_pit_v1,45.52,47.3,reject,compounder,core_military,2023-04-28,
+2023-05-31,2023-06-01,600328,REJECT,6.27,12.22,57.82,1,tushare_pit_v1,51.88,66.73,reject,cyclical,core_resource,2023-05-31,
+2023-05-31,2023-06-01,600348,REJECT,5.7,5.99,53.83,1,tushare_pit_v1,57.21,48.75,reject,cyclical,core_resource,2023-05-31,
+2023-05-31,2023-06-01,600893,REJECT,10.74,11.05,47.75,1,tushare_pit_v1,47.72,47.8,reject,compounder,core_military,2023-05-31,
+2023-06-30,2023-07-03,600328,REJECT,6.54,12.74,61.82,1,tushare_pit_v1,58.13,67.36,reject,cyclical,core_resource,2023-06-30,
+2023-06-30,2023-07-03,600348,REJECT,6.11,6.42,54.37,1,tushare_pit_v1,57.21,50.1,reject,cyclical,core_resource,2023-06-30,
+2023-06-30,2023-07-03,600893,REJECT,10.78,11.09,47.45,1,tushare_pit_v1,47.72,47.05,reject,compounder,core_military,2023-06-30,
+2023-07-31,2023-08-01,600328,REJECT,6.54,12.74,56.86,1,tushare_pit_v1,51.88,64.34,reject,cyclical,core_resource,2023-07-31,
+2023-07-31,2023-08-01,600348,REJECT,6.11,6.42,54.15,1,tushare_pit_v1,57.21,49.56,reject,cyclical,core_resource,2023-07-31,
+2023-07-31,2023-08-01,600893,REJECT,10.78,11.09,47.05,1,tushare_pit_v1,47.72,46.05,reject,compounder,core_military,2023-07-31,
+2023-08-31,2023-09-01,600348,HARVEST,5.96,6.42,62.05,1,tushare_pit_v1,69.46,50.93,harvest,cyclical,core_resource,2023-08-31,
+2023-08-31,2023-09-01,600328,REJECT,6.37,12.74,54.89,1,tushare_pit_v1,49.38,63.15,reject,cyclical,core_resource,2023-08-31,
+2023-08-31,2023-09-01,600893,REJECT,10.85,11.09,39.27,1,tushare_pit_v1,34.08,47.05,reject,compounder,core_military,2023-08-31,debt wall coverage fails survival tripwire
+2023-09-28,2023-10-09,600348,HARVEST,5.96,6.42,59.26,1,tushare_pit_v1,64.46,51.45,harvest,cyclical,core_resource,2023-09-28,
+2023-09-28,2023-10-09,600328,REJECT,6.37,12.74,58.55,1,tushare_pit_v1,55.63,62.94,reject,cyclical,core_resource,2023-09-28,
+2023-09-28,2023-10-09,600893,REJECT,10.85,11.09,39.19,1,tushare_pit_v1,34.08,46.85,reject,compounder,core_military,2023-09-28,debt wall coverage fails survival tripwire
+2023-10-31,2023-11-01,600348,HARVEST,6.0,6.42,61.12,1,tushare_pit_v1,72.71,43.73,harvest,cyclical,core_resource,2023-10-31,
+2023-10-31,2023-11-01,600328,REJECT,6.42,12.74,59.25,1,tushare_pit_v1,60.63,57.17,reject,cyclical,core_resource,2023-10-31,
+2023-10-31,2023-11-01,600893,REJECT,10.94,11.09,39.3,1,tushare_pit_v1,34.08,47.12,reject,compounder,core_military,2023-10-31,debt wall coverage fails survival tripwire
+2023-11-30,2023-12-01,600328,REJECT,6.42,12.74,59.29,1,tushare_pit_v1,60.63,57.28,reject,cyclical,core_resource,2023-11-30,
+2023-11-30,2023-12-01,600348,HARVEST,6.0,6.42,55.57,1,tushare_pit_v1,63.46,43.74,harvest,cyclical,core_resource,2023-11-30,
+2023-11-30,2023-12-01,600893,REJECT,10.94,11.09,39.3,1,tushare_pit_v1,34.08,47.12,reject,compounder,core_military,2023-11-30,debt wall coverage fails survival tripwire
+2023-12-29,2024-01-02,600328,REJECT,6.42,12.74,59.3,1,tushare_pit_v1,60.63,57.3,reject,cyclical,core_resource,2023-12-29,
+2023-12-29,2024-01-02,600348,HARVEST,6.0,6.42,56.05,1,tushare_pit_v1,63.46,44.94,harvest,cyclical,core_resource,2023-12-29,
+2023-12-29,2024-01-02,600893,REJECT,10.94,11.09,39.99,1,tushare_pit_v1,34.08,48.85,reject,compounder,core_military,2023-12-29,debt wall coverage fails survival tripwire
+2024-01-31,2024-02-01,600328,REJECT,6.42,12.74,62.47,1,tushare_pit_v1,65.63,57.72,reject,cyclical,core_resource,2024-01-31,
+2024-01-31,2024-02-01,600348,HARVEST,6.0,6.42,55.13,1,tushare_pit_v1,63.46,42.64,harvest,cyclical,core_resource,2024-01-31,
+2024-01-31,2024-02-01,600893,REJECT,10.94,11.09,39.99,1,tushare_pit_v1,34.08,48.85,reject,compounder,core_military,2024-01-31,debt wall coverage fails survival tripwire
+2024-02-29,2024-03-01,600328,REJECT,6.42,12.74,63.23,1,tushare_pit_v1,65.63,59.64,reject,cyclical,core_resource,2024-02-29,
+2024-02-29,2024-03-01,600348,HARVEST,6.0,6.42,55.57,1,tushare_pit_v1,63.46,43.74,harvest,cyclical,core_resource,2024-02-29,
+2024-02-29,2024-03-01,600893,REJECT,10.94,11.09,39.99,1,tushare_pit_v1,34.08,48.85,reject,compounder,core_military,2024-02-29,debt wall coverage fails survival tripwire
+2024-03-29,2024-04-01,600328,REJECT,6.42,12.74,62.7,1,tushare_pit_v1,65.63,58.31,reject,cyclical,core_resource,2024-03-29,
+2024-03-29,2024-04-01,600348,HARVEST,6.0,6.42,55.57,1,tushare_pit_v1,63.46,43.74,harvest,cyclical,core_resource,2024-03-29,
+2024-03-29,2024-04-01,600893,REJECT,10.94,11.09,39.99,1,tushare_pit_v1,34.08,48.85,reject,compounder,core_military,2024-03-29,debt wall coverage fails survival tripwire
+2024-04-30,2024-05-06,600328,REJECT,6.81,11.3,64.93,1,tushare_pit_v1,61.88,69.51,reject,cyclical,core_resource,2024-04-30,
+2024-04-30,2024-05-06,600348,REJECT,6.65,6.64,52.28,1,tushare_pit_v1,54.71,48.64,reject,cyclical,core_resource,2024-04-30,
+2024-04-30,2024-05-06,600893,REJECT,11.1,13.08,40.19,1,tushare_pit_v1,34.08,49.35,reject,compounder,core_military,2024-04-30,debt wall coverage fails survival tripwire
+2024-05-31,2024-06-03,600328,REJECT,7.04,11.69,62.86,1,tushare_pit_v1,61.88,64.34,reject,cyclical,core_resource,2024-05-31,
+2024-05-31,2024-06-03,600348,REJECT,6.65,6.64,48.93,1,tushare_pit_v1,53.66,41.84,reject,compounder,core_resource,2024-05-31,
+2024-05-31,2024-06-03,600893,REJECT,11.1,13.08,40.19,1,tushare_pit_v1,34.08,49.35,reject,compounder,core_military,2024-05-31,debt wall coverage fails survival tripwire
+2024-06-28,2024-07-01,600328,REJECT,7.04,11.69,65.73,1,tushare_pit_v1,66.88,64.01,reject,cyclical,core_resource,2024-06-28,
+2024-06-28,2024-07-01,600348,REJECT,6.65,6.64,47.87,1,tushare_pit_v1,48.46,46.99,reject,cyclical,core_resource,2024-06-28,
+2024-06-28,2024-07-01,600893,REJECT,11.15,13.13,40.19,1,tushare_pit_v1,34.08,49.35,reject,compounder,core_military,2024-06-28,debt wall coverage fails survival tripwire
+2024-07-31,2024-08-01,600328,REJECT,6.81,11.69,61.78,1,tushare_pit_v1,60.63,63.51,reject,cyclical,core_resource,2024-07-31,
+2024-07-31,2024-08-01,600348,REJECT,7.28,7.27,59.77,1,tushare_pit_v1,64.71,52.36,reject,cyclical,core_resource,2024-07-31,
+2024-07-31,2024-08-01,600893,REJECT,11.15,13.13,39.27,1,tushare_pit_v1,34.08,47.05,reject,compounder,core_military,2024-07-31,debt wall coverage fails survival tripwire
+2024-08-30,2024-09-02,600328,REJECT,6.81,11.69,62.15,1,tushare_pit_v1,60.63,64.44,reject,cyclical,core_resource,2024-08-30,
+2024-08-30,2024-09-02,600348,REJECT,7.04,7.27,56.98,1,tushare_pit_v1,60.96,51.01,reject,cyclical,core_resource,2024-08-30,
+2024-08-30,2024-09-02,600893,REJECT,11.15,13.13,39.59,1,tushare_pit_v1,34.08,47.85,reject,compounder,core_military,2024-08-30,debt wall coverage fails survival tripwire
+2024-09-30,2024-10-08,600328,REJECT,6.81,11.69,58.75,1,tushare_pit_v1,55.63,63.42,reject,cyclical,core_resource,2024-09-30,
+2024-09-30,2024-10-08,600348,REJECT,7.04,7.27,52.85,1,tushare_pit_v1,55.96,48.19,reject,cyclical,core_resource,2024-09-30,
+2024-09-30,2024-10-08,600893,REJECT,11.16,13.13,39.27,1,tushare_pit_v1,34.08,47.05,reject,compounder,core_military,2024-09-30,debt wall coverage fails survival tripwire
+2024-10-31,2024-11-01,600328,REJECT,6.9,11.69,57.82,1,tushare_pit_v1,54.38,62.99,reject,cyclical,core_resource,2024-10-31,
+2024-10-31,2024-11-01,600348,REJECT,7.19,7.27,54.97,1,tushare_pit_v1,60.21,47.1,reject,cyclical,core_resource,2024-10-31,
+2024-10-31,2024-11-01,600893,REJECT,11.2,13.13,39.99,1,tushare_pit_v1,34.08,48.85,reject,compounder,core_military,2024-10-31,debt wall coverage fails survival tripwire
+2024-11-29,2024-12-02,600328,REJECT,6.9,11.69,57.88,1,tushare_pit_v1,54.38,63.12,reject,cyclical,core_resource,2024-11-29,
+2024-11-29,2024-12-02,600348,REJECT,7.19,7.27,54.21,1,tushare_pit_v1,60.21,45.22,reject,cyclical,core_resource,2024-11-29,
+2024-11-29,2024-12-02,600893,REJECT,11.2,13.13,39.99,1,tushare_pit_v1,34.08,48.85,reject,compounder,core_military,2024-11-29,debt wall coverage fails survival tripwire
+2024-12-31,2024-12-31,600328,REJECT,6.9,11.69,58.84,1,tushare_pit_v1,59.38,58.04,reject,cyclical,core_resource,2024-12-31,
+2024-12-31,2024-12-31,600348,REJECT,7.19,7.27,57.25,1,tushare_pit_v1,65.21,45.31,reject,cyclical,core_resource,2024-12-31,
+2024-12-31,2024-12-31,600893,REJECT,11.2,13.13,38.67,1,tushare_pit_v1,34.08,45.55,reject,compounder,core_military,2024-12-31,debt wall coverage fails survival tripwire

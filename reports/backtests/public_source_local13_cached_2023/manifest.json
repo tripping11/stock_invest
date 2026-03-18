@@ -1,0 +1,30 @@
+{
+  "tickers": [
+    "000425",
+    "002096",
+    "002121",
+    "002226",
+    "600019",
+    "600221",
+    "600328",
+    "600348",
+    "600568",
+    "600758",
+    "601065",
+    "603227",
+    "603977"
+  ],
+  "skipped": [],
+  "rows": {
+    "signals_month_end": 84,
+    "daily_bars": 9388
+  },
+  "limitations": [
+    "public_source_watchlist_v1",
+    "statement availability uses announcement date when plausible, otherwise statutory lag fallback",
+    "sector/profile text uses latest available public profile rather than strict historical snapshots",
+    "float market cap may be missing and then falls back to total market cap"
+  ],
+  "signals_month_end_path": "/Users/hz/hz/A价投+周期/reports/backtests/public_source_local13_cached_2023/signals_month_end.csv",
+  "daily_bars_path": "/Users/hz/hz/A价投+周期/reports/backtests/public_source_local13_cached_2023/daily_bars.csv"
+}

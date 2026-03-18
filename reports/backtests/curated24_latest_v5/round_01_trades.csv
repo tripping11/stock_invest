@@ -1,0 +1,2 @@
+ticker,entry_date,exit_date,entry_price,exit_price,shares,hold_bars,hold_days,exit_reason,gross_return,net_pnl,annualized_return
+600036,2022-11-01,2022-12-01,24.2335,32.0706,13700,23,31,state_reject,0.323399,106689.74,26.090172858964024

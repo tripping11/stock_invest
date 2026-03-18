@@ -1,0 +1,85 @@
+signal_date,effective_date,ticker,vcrf_state,floor_price,recognition_price,total_score,tradable_flag,signal_version,underwrite_score,realization_score,position_state,primary_type,sector_route,announcement_date,reject_reason
+2024-04-30,2024-05-06,600568,REJECT,1.1,1.61,55.23,0,public_source_watchlist_v1,61.99,45.08,reject,special_situation,financial_asset,2024-04-30,
+2024-04-30,2024-05-06,600348,REJECT,7.28,2.89,47.91,1,public_source_watchlist_v1,50.81,43.55,reject,cyclical,core_resource,2024-04-30,
+2024-04-30,2024-05-06,002121,REJECT,0.53,0.78,39.14,1,public_source_watchlist_v1,29.55,53.53,reject,compounder,financial_asset,2024-04-30,debt wall coverage fails survival tripwire
+2024-04-30,2024-05-06,600221,REJECT,0.05,0.16,33.44,1,public_source_watchlist_v1,26.4,44.0,reject,compounder,unknown,2024-04-30,debt wall coverage fails survival tripwire
+2024-05-31,2024-06-03,600568,REJECT,1.1,1.61,49.95,0,public_source_watchlist_v1,54.74,42.76,reject,special_situation,financial_asset,2024-05-31,
+2024-05-31,2024-06-03,600348,REJECT,7.28,2.89,43.31,1,public_source_watchlist_v1,44.56,41.44,reject,cyclical,core_resource,2024-05-31,
+2024-05-31,2024-06-03,002121,REJECT,0.53,0.78,39.52,1,public_source_watchlist_v1,29.55,54.48,reject,compounder,financial_asset,2024-05-31,debt wall coverage fails survival tripwire
+2024-05-31,2024-06-03,600221,REJECT,0.05,0.16,33.44,1,public_source_watchlist_v1,26.4,44.0,reject,compounder,unknown,2024-05-31,debt wall coverage fails survival tripwire
+2024-06-28,2024-07-01,600568,READY,1.1,1.61,60.39,0,public_source_watchlist_v1,71.79,43.28,ready,special_situation,financial_asset,2024-06-28,
+2024-06-28,2024-07-01,600348,REJECT,7.28,2.89,43.13,1,public_source_watchlist_v1,44.56,40.99,reject,cyclical,core_resource,2024-06-28,
+2024-06-28,2024-07-01,002121,REJECT,0.53,0.78,39.1,1,public_source_watchlist_v1,29.55,53.43,reject,compounder,financial_asset,2024-06-28,debt wall coverage fails survival tripwire
+2024-06-28,2024-07-01,600221,REJECT,0.05,0.16,34.27,1,public_source_watchlist_v1,26.4,46.08,reject,compounder,unknown,2024-06-28,debt wall coverage fails survival tripwire
+2024-07-31,2024-08-01,600568,REJECT,1.1,1.61,56.59,0,public_source_watchlist_v1,65.99,42.48,reject,special_situation,financial_asset,2024-07-31,
+2024-07-31,2024-08-01,600348,HARVEST,7.28,2.89,56.56,1,public_source_watchlist_v1,60.81,50.19,harvest,cyclical,core_resource,2024-07-31,
+2024-07-31,2024-08-01,002121,REJECT,0.53,0.78,38.6,1,public_source_watchlist_v1,29.55,52.17,reject,compounder,financial_asset,2024-07-31,debt wall coverage fails survival tripwire
+2024-07-31,2024-08-01,600221,REJECT,0.05,0.16,33.75,1,public_source_watchlist_v1,26.4,44.78,reject,compounder,unknown,2024-07-31,debt wall coverage fails survival tripwire
+2024-08-30,2024-09-02,600568,REJECT,1.05,1.53,54.19,0,public_source_watchlist_v1,61.99,42.48,reject,special_situation,financial_asset,2024-08-30,
+2024-08-30,2024-09-02,600348,REJECT,7.04,4.32,53.61,1,public_source_watchlist_v1,57.06,48.44,reject,cyclical,core_resource,2024-08-30,
+2024-08-30,2024-09-02,002121,REJECT,0.5,0.74,38.36,1,public_source_watchlist_v1,29.11,52.23,reject,compounder,financial_asset,2024-08-30,debt wall coverage fails survival tripwire
+2024-08-30,2024-09-02,600221,REJECT,0.05,0.04,33.55,1,public_source_watchlist_v1,26.4,44.28,reject,compounder,unknown,2024-08-30,debt wall coverage fails survival tripwire
+2024-09-30,2024-10-08,600568,REJECT,1.05,1.53,54.51,0,public_source_watchlist_v1,61.99,43.28,reject,special_situation,financial_asset,2024-09-30,
+2024-09-30,2024-10-08,600348,REJECT,7.04,4.32,48.48,1,public_source_watchlist_v1,52.06,43.1,reject,cyclical,core_resource,2024-09-30,
+2024-09-30,2024-10-08,002121,REJECT,0.5,0.74,40.33,1,public_source_watchlist_v1,29.11,57.16,reject,compounder,financial_asset,2024-09-30,debt wall coverage fails survival tripwire
+2024-09-30,2024-10-08,600221,REJECT,0.02,0.04,33.76,1,public_source_watchlist_v1,26.4,44.8,reject,compounder,unknown,2024-09-30,debt wall coverage fails survival tripwire
+2024-10-31,2024-11-01,600568,REJECT,1.03,1.51,61.07,0,public_source_watchlist_v1,66.39,53.1,reject,special_situation,financial_asset,2024-10-31,
+2024-10-31,2024-11-01,600348,REJECT,7.19,6.05,55.7,1,public_source_watchlist_v1,56.31,54.79,reject,cyclical,core_resource,2024-10-31,
+2024-10-31,2024-11-01,600221,REJECT,0.08,0.27,42.09,1,public_source_watchlist_v1,38.94,46.82,reject,compounder,unknown,2024-10-31,
+2024-10-31,2024-11-01,002121,REJECT,0.44,0.65,40.43,1,public_source_watchlist_v1,29.11,57.42,reject,compounder,financial_asset,2024-10-31,debt wall coverage fails survival tripwire
+2024-11-29,2024-12-02,600568,REJECT,1.03,1.51,56.72,0,public_source_watchlist_v1,59.14,53.1,reject,special_situation,financial_asset,2024-11-29,
+2024-11-29,2024-12-02,600348,REJECT,7.19,6.05,53.77,1,public_source_watchlist_v1,56.31,49.96,reject,cyclical,core_resource,2024-11-29,
+2024-11-29,2024-12-02,600221,REJECT,0.08,0.27,41.62,1,public_source_watchlist_v1,38.94,45.65,reject,compounder,unknown,2024-11-29,
+2024-11-29,2024-12-02,002121,REJECT,0.44,0.65,41.54,1,public_source_watchlist_v1,29.11,60.18,reject,compounder,financial_asset,2024-11-29,debt wall coverage fails survival tripwire
+2024-12-31,2025-01-02,600568,REJECT,1.03,1.51,60.59,0,public_source_watchlist_v1,66.39,51.9,reject,special_situation,financial_asset,2024-12-31,
+2024-12-31,2025-01-02,600348,HARVEST,7.19,6.05,56.28,1,public_source_watchlist_v1,61.31,48.74,harvest,cyclical,core_resource,2024-12-31,
+2024-12-31,2025-01-02,002121,REJECT,0.44,0.65,41.57,1,public_source_watchlist_v1,29.11,60.26,reject,compounder,financial_asset,2024-12-31,debt wall coverage fails survival tripwire
+2024-12-31,2025-01-02,600221,REJECT,0.08,0.27,41.38,1,public_source_watchlist_v1,38.94,45.05,reject,compounder,unknown,2024-12-31,
+2025-01-27,2025-02-05,600568,REJECT,1.03,1.51,57.15,0,public_source_watchlist_v1,66.39,43.28,reject,special_situation,financial_asset,2025-01-27,
+2025-01-27,2025-02-05,600348,HARVEST,7.19,6.05,56.59,1,public_source_watchlist_v1,61.31,49.52,harvest,cyclical,core_resource,2025-01-27,
+2025-01-27,2025-02-05,600221,REJECT,0.08,0.27,40.75,1,public_source_watchlist_v1,38.94,43.46,reject,compounder,unknown,2025-01-27,
+2025-01-27,2025-02-05,002121,REJECT,0.44,0.65,38.91,1,public_source_watchlist_v1,29.11,53.62,reject,compounder,financial_asset,2025-01-27,debt wall coverage fails survival tripwire
+2025-02-28,2025-03-03,600568,REJECT,1.03,1.51,60.27,0,public_source_watchlist_v1,66.39,51.1,reject,special_situation,financial_asset,2025-02-28,
+2025-02-28,2025-03-03,600348,HARVEST,7.19,6.05,56.94,1,public_source_watchlist_v1,61.31,50.38,harvest,cyclical,core_resource,2025-02-28,
+2025-02-28,2025-03-03,600221,REJECT,0.08,0.27,40.75,1,public_source_watchlist_v1,38.94,43.46,reject,compounder,unknown,2025-02-28,
+2025-02-28,2025-03-03,002121,REJECT,0.44,0.65,39.21,1,public_source_watchlist_v1,29.11,54.36,reject,compounder,financial_asset,2025-02-28,debt wall coverage fails survival tripwire
+2025-03-31,2025-04-01,600568,REJECT,1.03,1.51,60.59,0,public_source_watchlist_v1,66.39,51.9,reject,special_situation,financial_asset,2025-03-31,
+2025-03-31,2025-04-01,600348,HARVEST,7.19,6.05,57.72,1,public_source_watchlist_v1,61.31,52.34,harvest,cyclical,core_resource,2025-03-31,
+2025-03-31,2025-04-01,600221,REJECT,0.08,0.27,40.75,1,public_source_watchlist_v1,38.94,43.46,reject,compounder,unknown,2025-03-31,
+2025-03-31,2025-04-01,002121,REJECT,0.44,0.65,38.92,1,public_source_watchlist_v1,29.55,52.97,reject,compounder,financial_asset,2025-03-31,debt wall coverage fails survival tripwire
+2025-04-30,2025-05-06,600348,HARVEST,8.03,1.99,57.66,1,public_source_watchlist_v1,62.56,50.32,harvest,cyclical,core_resource,2025-04-30,
+2025-04-30,2025-05-06,600568,REJECT,0.78,1.15,48.88,0,public_source_watchlist_v1,53.14,42.48,reject,special_situation,financial_asset,2025-04-30,
+2025-04-30,2025-05-06,002121,REJECT,0.31,0.45,38.87,1,public_source_watchlist_v1,29.55,52.85,reject,compounder,financial_asset,2025-04-30,debt wall coverage fails survival tripwire
+2025-04-30,2025-05-06,600221,REJECT,0.04,0.04,33.22,1,public_source_watchlist_v1,26.4,43.46,reject,compounder,unknown,2025-04-30,debt wall coverage fails survival tripwire
+2025-05-30,2025-06-03,600348,HARVEST,8.03,1.99,57.12,1,public_source_watchlist_v1,62.56,48.95,harvest,cyclical,core_resource,2025-05-30,
+2025-05-30,2025-06-03,600568,REJECT,0.78,1.15,48.64,0,public_source_watchlist_v1,47.34,50.59,reject,special_situation,financial_asset,2025-05-30,
+2025-05-30,2025-06-03,002121,REJECT,0.31,0.45,39.79,1,public_source_watchlist_v1,29.55,55.15,reject,compounder,financial_asset,2025-05-30,debt wall coverage fails survival tripwire
+2025-05-30,2025-06-03,600221,REJECT,0.04,0.04,33.22,1,public_source_watchlist_v1,26.4,43.46,reject,compounder,unknown,2025-05-30,debt wall coverage fails survival tripwire
+2025-06-30,2025-07-01,600348,HARVEST,8.03,1.99,57.56,1,public_source_watchlist_v1,62.56,50.05,harvest,cyclical,core_resource,2025-06-30,
+2025-06-30,2025-07-01,600568,REJECT,0.78,1.15,48.88,0,public_source_watchlist_v1,47.34,51.19,reject,special_situation,financial_asset,2025-06-30,
+2025-06-30,2025-07-01,002121,REJECT,0.31,0.45,39.19,1,public_source_watchlist_v1,29.55,53.66,reject,compounder,financial_asset,2025-06-30,debt wall coverage fails survival tripwire
+2025-06-30,2025-07-01,600221,REJECT,0.04,0.04,33.13,1,public_source_watchlist_v1,26.4,43.23,reject,compounder,unknown,2025-06-30,debt wall coverage fails survival tripwire
+2025-07-31,2025-08-01,600348,REJECT,8.03,1.99,56.09,1,public_source_watchlist_v1,58.81,52.02,reject,cyclical,core_resource,2025-07-31,
+2025-07-31,2025-08-01,600568,REJECT,0.78,1.15,48.24,0,public_source_watchlist_v1,47.34,49.59,reject,special_situation,financial_asset,2025-07-31,
+2025-07-31,2025-08-01,002121,REJECT,0.31,0.45,39.9,1,public_source_watchlist_v1,29.55,55.43,reject,compounder,financial_asset,2025-07-31,debt wall coverage fails survival tripwire
+2025-07-31,2025-08-01,600221,REJECT,0.04,0.04,34.7,1,public_source_watchlist_v1,26.4,47.16,reject,compounder,unknown,2025-07-31,debt wall coverage fails survival tripwire
+2025-08-29,2025-09-01,600348,REJECT,8.03,1.99,55.32,1,public_source_watchlist_v1,58.81,50.08,reject,cyclical,core_resource,2025-08-29,
+2025-08-29,2025-09-01,600568,REJECT,0.78,1.14,47.86,0,public_source_watchlist_v1,47.34,48.65,reject,special_situation,financial_asset,2025-08-29,
+2025-08-29,2025-09-01,002121,REJECT,0.38,0.55,39.7,1,public_source_watchlist_v1,29.55,54.92,reject,compounder,financial_asset,2025-08-29,debt wall coverage fails survival tripwire
+2025-08-29,2025-09-01,600221,REJECT,0.04,0.04,34.22,1,public_source_watchlist_v1,26.4,45.96,reject,compounder,unknown,2025-08-29,debt wall coverage fails survival tripwire
+2025-09-30,2025-10-09,600348,HARVEST,7.83,2.6,56.5,1,public_source_watchlist_v1,60.06,51.17,harvest,cyclical,core_resource,2025-09-30,
+2025-09-30,2025-10-09,600568,REJECT,0.78,1.14,48.76,0,public_source_watchlist_v1,47.34,50.89,reject,special_situation,financial_asset,2025-09-30,
+2025-09-30,2025-10-09,002121,REJECT,0.38,0.55,37.63,1,public_source_watchlist_v1,29.55,49.75,reject,compounder,financial_asset,2025-09-30,debt wall coverage fails survival tripwire
+2025-09-30,2025-10-09,600221,REJECT,0.04,0.04,34.7,1,public_source_watchlist_v1,26.4,47.16,reject,compounder,unknown,2025-09-30,debt wall coverage fails survival tripwire
+2025-10-31,2025-11-03,600348,REJECT,7.91,3.74,53.37,1,public_source_watchlist_v1,55.06,50.83,reject,cyclical,core_resource,2025-10-31,
+2025-10-31,2025-11-03,600568,REJECT,0.78,1.14,47.34,0,public_source_watchlist_v1,47.34,47.35,reject,special_situation,financial_asset,2025-10-31,
+2025-10-31,2025-11-03,600221,REJECT,0.09,0.13,38.61,1,public_source_watchlist_v1,34.98,44.05,reject,compounder,unknown,2025-10-31,
+2025-10-31,2025-11-03,002121,REJECT,0.4,0.59,38.46,1,public_source_watchlist_v1,29.55,51.83,reject,compounder,financial_asset,2025-10-31,debt wall coverage fails survival tripwire
+2025-11-28,2025-12-01,600348,HARVEST,7.91,3.74,55.63,1,public_source_watchlist_v1,60.06,48.99,harvest,cyclical,core_resource,2025-11-28,
+2025-11-28,2025-12-01,600568,REJECT,0.78,1.14,48.1,0,public_source_watchlist_v1,47.34,49.25,reject,special_situation,financial_asset,2025-11-28,
+2025-11-28,2025-12-01,600221,REJECT,0.09,0.13,38.61,1,public_source_watchlist_v1,34.98,44.05,reject,compounder,unknown,2025-11-28,
+2025-11-28,2025-12-01,002121,REJECT,0.4,0.59,38.07,1,public_source_watchlist_v1,29.55,50.86,reject,compounder,financial_asset,2025-11-28,debt wall coverage fails survival tripwire
+2025-12-31,2025-12-31,600348,REJECT,7.91,3.74,50.14,1,public_source_watchlist_v1,55.06,42.75,reject,cyclical,core_resource,2025-12-31,
+2025-12-31,2025-12-31,600568,REJECT,0.78,1.14,48.36,0,public_source_watchlist_v1,47.34,49.89,reject,special_situation,financial_asset,2025-12-31,
+2025-12-31,2025-12-31,600221,REJECT,0.09,0.13,38.61,1,public_source_watchlist_v1,34.98,44.05,reject,compounder,unknown,2025-12-31,
+2025-12-31,2025-12-31,002121,REJECT,0.4,0.59,37.52,1,public_source_watchlist_v1,29.55,49.48,reject,compounder,financial_asset,2025-12-31,debt wall coverage fails survival tripwire

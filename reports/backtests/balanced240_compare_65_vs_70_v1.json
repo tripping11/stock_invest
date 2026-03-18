@@ -1,0 +1,253 @@
+{
+  "signal_summary": {
+    "source_signals": "reports/backtests/balanced240_tushare_inputs_v1/signals_month_end.csv",
+    "output_signals": "reports/backtests/balanced240_threshold70_signals_v1.csv",
+    "attack_rows_65": 60,
+    "attack_rows_70": 28,
+    "tradable_attack_rows_65": 60,
+    "tradable_attack_rows_70": 28,
+    "unique_attack_tickers_65": 12,
+    "unique_attack_tickers_70": 10,
+    "demoted_rows": 32
+  },
+  "round_count_65": 4,
+  "round_count_70": 4,
+  "unique_selected_tickers_65": 12,
+  "unique_selected_tickers_70": 10,
+  "selected_rows_65": 12,
+  "selected_rows_70": 10,
+  "rounds": [
+    {
+      "round_id": 1,
+      "tickers_65": [
+        "600090",
+        "600393",
+        "000926"
+      ],
+      "tickers_70": [
+        "600090",
+        "600393",
+        "000006"
+      ],
+      "only_65": [
+        "000926"
+      ],
+      "only_70": [
+        "000006"
+      ],
+      "round_final_value_65": 897965.43,
+      "round_final_value_70": 1146555.73,
+      "portfolio_cagr_65": -0.017777,
+      "portfolio_cagr_70": 0.023056,
+      "max_drawdown_65": -0.238247,
+      "max_drawdown_70": -0.178566,
+      "used_cash_ratio_65": 0.722955,
+      "used_cash_ratio_70": 0.531361
+    },
+    {
+      "round_id": 2,
+      "tickers_65": [
+        "000042",
+        "000006",
+        "000001"
+      ],
+      "tickers_70": [
+        "600297",
+        "000002",
+        "000001"
+      ],
+      "only_65": [
+        "000006",
+        "000042"
+      ],
+      "only_70": [
+        "000002",
+        "600297"
+      ],
+      "round_final_value_65": 1154625.98,
+      "round_final_value_70": 985563.88,
+      "portfolio_cagr_65": 0.024252,
+      "portfolio_cagr_70": -0.002421,
+      "max_drawdown_65": -0.263445,
+      "max_drawdown_70": -0.155557,
+      "used_cash_ratio_65": 1.157414,
+      "used_cash_ratio_70": 0.487787
+    },
+    {
+      "round_id": 3,
+      "tickers_65": [
+        "600297",
+        "000002",
+        "600637"
+      ],
+      "tickers_70": [
+        "600705",
+        "000042",
+        "000926"
+      ],
+      "only_65": [
+        "000002",
+        "600297",
+        "600637"
+      ],
+      "only_70": [
+        "000042",
+        "000926",
+        "600705"
+      ],
+      "round_final_value_65": 908531.57,
+      "round_final_value_70": 915071.79,
+      "portfolio_cagr_65": -0.01586,
+      "portfolio_cagr_70": -0.014683,
+      "max_drawdown_65": -0.204688,
+      "max_drawdown_70": -0.242098,
+      "used_cash_ratio_65": 0.691866,
+      "used_cash_ratio_70": 0.727393
+    },
+    {
+      "round_id": 4,
+      "tickers_65": [
+        "600859",
+        "600705",
+        "600048"
+      ],
+      "tickers_70": [
+        "600859"
+      ],
+      "only_65": [
+        "600048",
+        "600705"
+      ],
+      "only_70": [],
+      "round_final_value_65": 982322.06,
+      "round_final_value_70": 933105.75,
+      "portfolio_cagr_65": -0.002968,
+      "portfolio_cagr_70": -0.011473,
+      "max_drawdown_65": -0.204527,
+      "max_drawdown_70": -0.083439,
+      "used_cash_ratio_65": 1.057902,
+      "used_cash_ratio_70": 0.35037
+    }
+  ],
+  "trade_summaries": [
+    {
+      "label": "65",
+      "round_id": 1,
+      "trade_count": 3,
+      "tickers": [
+        "600090",
+        "600393",
+        "000926"
+      ],
+      "exit_reason_counts": {
+        "max_loss_stop": 1,
+        "state_reject": 1,
+        "time_exit": 1
+      },
+      "total_pnl": null
+    },
+    {
+      "label": "65",
+      "round_id": 2,
+      "trade_count": 3,
+      "tickers": [
+        "000042",
+        "000006",
+        "000001"
+      ],
+      "exit_reason_counts": {
+        "state_reject": 1,
+        "target_hit": 1,
+        "max_loss_stop": 1
+      },
+      "total_pnl": null
+    },
+    {
+      "label": "65",
+      "round_id": 3,
+      "trade_count": 3,
+      "tickers": [
+        "600297",
+        "000002",
+        "600637"
+      ],
+      "exit_reason_counts": {
+        "max_loss_stop": 2,
+        "end_of_data": 1
+      },
+      "total_pnl": null
+    },
+    {
+      "label": "65",
+      "round_id": 4,
+      "trade_count": 3,
+      "tickers": [
+        "600705",
+        "600859",
+        "600048"
+      ],
+      "exit_reason_counts": {
+        "end_of_data": 2,
+        "max_loss_stop": 1
+      },
+      "total_pnl": null
+    },
+    {
+      "label": "70",
+      "round_id": 1,
+      "trade_count": 3,
+      "tickers": [
+        "600090",
+        "600393",
+        "000006"
+      ],
+      "exit_reason_counts": {
+        "state_reject": 2,
+        "target_hit": 1
+      },
+      "total_pnl": null
+    },
+    {
+      "label": "70",
+      "round_id": 2,
+      "trade_count": 3,
+      "tickers": [
+        "600297",
+        "000002",
+        "000001"
+      ],
+      "exit_reason_counts": {
+        "max_loss_stop": 2,
+        "end_of_data": 1
+      },
+      "total_pnl": null
+    },
+    {
+      "label": "70",
+      "round_id": 3,
+      "trade_count": 3,
+      "tickers": [
+        "600705",
+        "000042",
+        "000926"
+      ],
+      "exit_reason_counts": {
+        "max_loss_stop": 2,
+        "end_of_data": 1
+      },
+      "total_pnl": null
+    },
+    {
+      "label": "70",
+      "round_id": 4,
+      "trade_count": 1,
+      "tickers": [
+        "600859"
+      ],
+      "exit_reason_counts": {
+        "max_loss_stop": 1
+      },
+      "total_pnl": null
+    }
+  ]
+}

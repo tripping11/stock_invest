@@ -1,0 +1,153 @@
+{
+  "tickers": [
+    "000001",
+    "000063",
+    "000566",
+    "000780",
+    "000795",
+    "000858",
+    "001210",
+    "002013",
+    "002027",
+    "002040",
+    "002050",
+    "002189",
+    "002337",
+    "002371",
+    "002447",
+    "002475",
+    "002489",
+    "002594",
+    "002642",
+    "002750",
+    "002802",
+    "002955",
+    "300062",
+    "300124",
+    "300217",
+    "300280",
+    "300308",
+    "300373",
+    "300517",
+    "300664",
+    "300750",
+    "300760",
+    "300815",
+    "300962",
+    "301112",
+    "301286",
+    "301536",
+    "600036",
+    "600103",
+    "600150",
+    "600190",
+    "600276",
+    "600284",
+    "600317",
+    "600438",
+    "600489",
+    "600634",
+    "600658",
+    "600809",
+    "600827",
+    "600898",
+    "601038",
+    "601088",
+    "601138",
+    "601225",
+    "601333",
+    "601788",
+    "601899",
+    "601919",
+    "603088",
+    "603259",
+    "603270",
+    "603530",
+    "603808",
+    "605100",
+    "688041",
+    "688068",
+    "688226",
+    "688390",
+    "688611",
+    "920021",
+    "920422",
+    "920680",
+    "920992"
+  ],
+  "skipped": [
+    {
+      "ticker": "000003",
+      "reason": "missing_daily_bars"
+    },
+    {
+      "ticker": "000522",
+      "reason": "missing_daily_bars"
+    },
+    {
+      "ticker": "000621",
+      "reason": "missing_daily_bars"
+    },
+    {
+      "ticker": "600005",
+      "reason": "missing_daily_bars"
+    },
+    {
+      "ticker": "600772",
+      "reason": "missing_daily_bars"
+    }
+  ],
+  "rows": {
+    "signals_month_end": 4459,
+    "daily_bars": 92296
+  },
+  "limitations": [
+    "tushare_pit_v1",
+    "requires TUSHARE_TOKEN and a reachable Tushare Pro account",
+    "revenue breakdown depends on fina_mainbz availability per ticker",
+    "order execution still follows the deterministic local backtest protocol"
+  ],
+  "diagnostics": {
+    "vcrf_state_counts": {
+      "REJECT": 4121,
+      "READY": 265,
+      "HARVEST": 50,
+      "COLD_STORAGE": 16,
+      "ATTACK": 7
+    },
+    "position_state_counts": {
+      "reject": 4121,
+      "ready": 265,
+      "harvest": 50,
+      "cold_storage": 16,
+      "attack": 7
+    },
+    "tradable_flag_counts": {
+      "1": 4104,
+      "0": 355
+    },
+    "attack_gate": {
+      "min_underwrite": 75.0,
+      "min_realization": 70.0
+    },
+    "attack_tradable_rows": 7,
+    "bottleneck_counts": {
+      "underwrite_below_attack": 4227,
+      "realization_below_attack": 4196,
+      "underwrite_pass_realization_fail": 225,
+      "hard_reject_rows": 228
+    },
+    "top_reject_reasons": [
+      {
+        "reason": "debt wall coverage fails survival tripwire",
+        "count": 223
+      },
+      {
+        "reason": "balance sheet survival is questionable",
+        "count": 57
+      }
+    ]
+  },
+  "signals_month_end_path": "reports/backtests/wide79_tushare_inputs_v1/signals_month_end.csv",
+  "daily_bars_path": "reports/backtests/wide79_tushare_inputs_v1/daily_bars.csv"
+}

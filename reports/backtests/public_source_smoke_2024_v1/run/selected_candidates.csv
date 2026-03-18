@@ -1,0 +1,4 @@
+signal_date,effective_date,ticker,vcrf_state,floor_price,recognition_price,total_score,tradable_flag,signal_version,underwrite_score,realization_score,position_state,primary_type,sector_route,announcement_date,reject_reason,v_score,c_score,r_score,f_score,vcrf_state_rank,round_id,slot_in_round
+2024-04-30,2024-05-06,600019,HARVEST,7.75,1.04,53.68,1,public_source_watchlist_v1,62.96,39.75,harvest,compounder,core_resource,2024-04-30,,,,,,4,1,1
+2024-06-28,2024-07-01,600328,HARVEST,7.04,0.53,56.21,1,public_source_watchlist_v1,62.95,46.11,harvest,compounder,core_resource,2024-06-28,,,,,,4,1,2
+2024-07-31,2024-08-01,600348,HARVEST,7.28,2.89,54.67,1,public_source_watchlist_v1,60.81,45.45,harvest,cyclical,core_resource,2024-07-31,,,,,,4,1,3

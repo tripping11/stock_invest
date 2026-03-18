@@ -1,0 +1,115 @@
+{
+  "tickers": [
+    "000063",
+    "000780",
+    "000858",
+    "002013",
+    "002027",
+    "002050",
+    "002371",
+    "002447",
+    "002475",
+    "002594",
+    "002750",
+    "300124",
+    "300280",
+    "300308",
+    "300750",
+    "300760",
+    "600036",
+    "600150",
+    "600190",
+    "600276",
+    "600317",
+    "600438",
+    "600634",
+    "600809",
+    "600898",
+    "601088",
+    "601138",
+    "601225",
+    "601333",
+    "601899",
+    "601919",
+    "603259",
+    "688041",
+    "920680"
+  ],
+  "skipped": [
+    {
+      "ticker": "000003",
+      "reason": "missing_daily_bars"
+    },
+    {
+      "ticker": "000522",
+      "reason": "missing_daily_bars"
+    },
+    {
+      "ticker": "000621",
+      "reason": "missing_daily_bars"
+    },
+    {
+      "ticker": "600005",
+      "reason": "missing_daily_bars"
+    },
+    {
+      "ticker": "600772",
+      "reason": "missing_daily_bars"
+    }
+  ],
+  "rows": {
+    "signals_month_end": 2111,
+    "daily_bars": 44057
+  },
+  "limitations": [
+    "tushare_pit_v1",
+    "requires TUSHARE_TOKEN and a reachable Tushare Pro account",
+    "revenue breakdown depends on fina_mainbz availability per ticker",
+    "order execution still follows the deterministic local backtest protocol"
+  ],
+  "diagnostics": {
+    "vcrf_state_counts": {
+      "REJECT": 1964,
+      "READY": 111,
+      "HARVEST": 34,
+      "ATTACK": 2
+    },
+    "position_state_counts": {
+      "reject": 1964,
+      "ready": 111,
+      "harvest": 34,
+      "attack": 2
+    },
+    "tradable_flag_counts": {
+      "1": 1974,
+      "0": 137
+    },
+    "attack_gate": {
+      "min_underwrite": 75.0,
+      "min_realization": 70.0
+    },
+    "attack_tradable_rows": 2,
+    "bottleneck_counts": {
+      "underwrite_below_attack": 2011,
+      "realization_below_attack": 2022,
+      "underwrite_pass_realization_fail": 98,
+      "hard_reject_rows": 445
+    },
+    "top_reject_reasons": [
+      {
+        "reason": "business is not understandable",
+        "count": 277
+      },
+      {
+        "reason": "debt wall coverage fails survival tripwire",
+        "count": 163
+      },
+      {
+        "reason": "balance sheet survival is questionable",
+        "count": 57
+      }
+    ]
+  },
+  "signals_month_end_path": "reports/backtests/wide79_part2_inputs_v1/signals_month_end.csv",
+  "daily_bars_path": "reports/backtests/wide79_part2_inputs_v1/daily_bars.csv"
+}

@@ -24,7 +24,9 @@ venv/
 # Generated research outputs
 data/
 evidence/
-reports/
+reports/*
+!reports/backtests/
+!reports/backtests/**
 tmp/
 
 # Local reference material

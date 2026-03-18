@@ -1,0 +1,20 @@
+{
+  "tickers": [
+    "600019",
+    "600328",
+    "600348"
+  ],
+  "skipped": [],
+  "rows": {
+    "signals_month_end": 21,
+    "daily_bars": 1455
+  },
+  "limitations": [
+    "public_source_watchlist_v1",
+    "statement availability uses announcement date when plausible, otherwise statutory lag fallback",
+    "sector/profile text uses latest available public profile rather than strict historical snapshots",
+    "float market cap may be missing and then falls back to total market cap"
+  ],
+  "signals_month_end_path": "reports/backtests/public_source_cached3/signals_month_end.csv",
+  "daily_bars_path": "reports/backtests/public_source_cached3/daily_bars.csv"
+}

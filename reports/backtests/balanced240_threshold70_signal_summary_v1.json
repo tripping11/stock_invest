@@ -1,0 +1,11 @@
+{
+  "source_signals": "reports/backtests/balanced240_tushare_inputs_v1/signals_month_end.csv",
+  "output_signals": "reports/backtests/balanced240_threshold70_signals_v1.csv",
+  "attack_rows_65": 60,
+  "attack_rows_70": 28,
+  "tradable_attack_rows_65": 60,
+  "tradable_attack_rows_70": 28,
+  "unique_attack_tickers_65": 12,
+  "unique_attack_tickers_70": 10,
+  "demoted_rows": 32
+}

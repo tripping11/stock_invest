@@ -1,0 +1,2 @@
+ticker,entry_date,exit_date,entry_price,exit_price,shares,hold_bars,hold_days,exit_reason,gross_return,net_pnl,annualized_return
+688068,2024-06-03,2024-11-20,30.6096,46.4068,10800,115,171,target_hit,0.516085,170100.96,1.4308323679956088

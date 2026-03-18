@@ -1,0 +1,2 @@
+ticker,entry_date,exit_date,entry_price,exit_price,shares,hold_bars,hold_days,exit_reason,gross_return,net_pnl,annualized_return
+600859,2024-08-01,2024-09-18,14.5072,11.6,22900,33,49,max_loss_stop,-0.2004,-66894.25,-0.8109827845471173

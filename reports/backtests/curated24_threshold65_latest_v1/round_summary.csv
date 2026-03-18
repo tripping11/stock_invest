@@ -1,0 +1,2 @@
+round_id,tickers,round_final_value,avg_stock_cagr,portfolio_cagr,max_drawdown,win_rate,used_cash_ratio,target_hit_rate,floor_stop_rate,anomalies
+1,"['601919', '600036']",1185924.78,13.297599819179444,0.028828194356327996,-0.03775331785987146,1.0,0.804686499894934,0.5,0.0,[]

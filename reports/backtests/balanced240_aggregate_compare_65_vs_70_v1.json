@@ -1,0 +1,49 @@
+{
+  "65": {
+    "round_count": 4,
+    "selected_rows": 12,
+    "unique_selected_tickers": 12,
+    "avg_round_final_value": 985861.26,
+    "median_round_final_value": 945426.81,
+    "best_round_final_value": 1154625.98,
+    "worst_round_final_value": 897965.43,
+    "avg_max_drawdown": -0.227727,
+    "avg_used_cash_ratio": 0.907534,
+    "avg_underwrite_score": 82.1933,
+    "avg_realization_score": 69.1892,
+    "exit_reason_counts": {
+      "max_loss_stop": 5,
+      "state_reject": 2,
+      "time_exit": 1,
+      "target_hit": 1,
+      "end_of_data": 3
+    }
+  },
+  "70": {
+    "round_count": 4,
+    "selected_rows": 10,
+    "unique_selected_tickers": 10,
+    "avg_round_final_value": 995074.29,
+    "median_round_final_value": 959334.81,
+    "best_round_final_value": 1146555.73,
+    "worst_round_final_value": 915071.79,
+    "avg_max_drawdown": -0.164915,
+    "avg_used_cash_ratio": 0.524228,
+    "avg_underwrite_score": 81.377,
+    "avg_realization_score": 78.619,
+    "exit_reason_counts": {
+      "state_reject": 2,
+      "target_hit": 1,
+      "max_loss_stop": 5,
+      "end_of_data": 2
+    }
+  },
+  "delta_65_minus_70": {
+    "avg_round_final_value": -9213.03,
+    "median_round_final_value": -13908.0,
+    "avg_max_drawdown": -0.062812,
+    "avg_used_cash_ratio": 0.383306,
+    "avg_underwrite_score": 0.8163,
+    "avg_realization_score": -9.4298
+  }
+}

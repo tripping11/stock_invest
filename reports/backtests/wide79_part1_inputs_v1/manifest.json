@@ -1,0 +1,98 @@
+{
+  "tickers": [
+    "000001",
+    "000566",
+    "000795",
+    "001210",
+    "002040",
+    "002189",
+    "002337",
+    "002489",
+    "002642",
+    "002802",
+    "002955",
+    "300062",
+    "300217",
+    "300373",
+    "300517",
+    "300664",
+    "300815",
+    "300962",
+    "301112",
+    "301286",
+    "301536",
+    "600103",
+    "600284",
+    "600489",
+    "600658",
+    "600827",
+    "601038",
+    "601788",
+    "603088",
+    "603270",
+    "603530",
+    "603808",
+    "605100",
+    "688068",
+    "688226",
+    "688390",
+    "688611",
+    "920021",
+    "920422",
+    "920992"
+  ],
+  "skipped": [],
+  "rows": {
+    "signals_month_end": 2348,
+    "daily_bars": 48239
+  },
+  "limitations": [
+    "tushare_pit_v1",
+    "requires TUSHARE_TOKEN and a reachable Tushare Pro account",
+    "revenue breakdown depends on fina_mainbz availability per ticker",
+    "order execution still follows the deterministic local backtest protocol"
+  ],
+  "diagnostics": {
+    "vcrf_state_counts": {
+      "REJECT": 2178,
+      "READY": 134,
+      "COLD_STORAGE": 16,
+      "HARVEST": 16,
+      "ATTACK": 4
+    },
+    "position_state_counts": {
+      "reject": 2178,
+      "ready": 134,
+      "cold_storage": 16,
+      "harvest": 16,
+      "attack": 4
+    },
+    "tradable_flag_counts": {
+      "1": 2130,
+      "0": 218
+    },
+    "attack_gate": {
+      "min_underwrite": 75.0,
+      "min_realization": 70.0
+    },
+    "attack_tradable_rows": 4,
+    "bottleneck_counts": {
+      "underwrite_below_attack": 2229,
+      "realization_below_attack": 2173,
+      "underwrite_pass_realization_fail": 115,
+      "hard_reject_rows": 315
+    },
+    "top_reject_reasons": [
+      {
+        "reason": "business is not understandable",
+        "count": 251
+      },
+      {
+        "reason": "debt wall coverage fails survival tripwire",
+        "count": 64
+      }
+    ]
+  },
+  "signals_month_end_path": "reports/backtests/wide79_part1_inputs_v1/signals_month_end.csv",
+  "daily_bars_path": "reports/backtests/wide79_part1_inputs_v1/daily_bars.csv"
+}

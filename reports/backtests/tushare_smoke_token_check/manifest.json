@@ -1,0 +1,17 @@
+{
+  "tickers": [
+    "600328"
+  ],
+  "skipped": [
+    {
+      "ticker": "600328",
+      "reason": "missing_daily_bars"
+    }
+  ],
+  "rows": {
+    "signals_month_end": 0,
+    "daily_bars": 0
+  },
+  "signals_month_end_path": "/Users/hz/hz/A价投+周期/reports/backtests/tushare_smoke_token_check/signals_month_end.csv",
+  "daily_bars_path": "/Users/hz/hz/A价投+周期/reports/backtests/tushare_smoke_token_check/daily_bars.csv"
+}

@@ -1,0 +1,52 @@
+{
+  "tickers": [
+    "600328",
+    "600348",
+    "600893"
+  ],
+  "skipped": [],
+  "rows": {
+    "signals_month_end": 209,
+    "daily_bars": 4355
+  },
+  "limitations": [
+    "tushare_pit_v1",
+    "requires TUSHARE_TOKEN and a reachable Tushare Pro account",
+    "revenue breakdown depends on fina_mainbz availability per ticker",
+    "order execution still follows the deterministic local backtest protocol"
+  ],
+  "diagnostics": {
+    "vcrf_state_counts": {
+      "REJECT": 180,
+      "HARVEST": 15,
+      "READY": 14
+    },
+    "position_state_counts": {
+      "reject": 180,
+      "harvest": 15,
+      "ready": 14
+    },
+    "tradable_flag_counts": {
+      "1": 209
+    },
+    "attack_gate": {
+      "min_underwrite": 75.0,
+      "min_realization": 70.0
+    },
+    "attack_tradable_rows": 0,
+    "bottleneck_counts": {
+      "underwrite_below_attack": 199,
+      "realization_below_attack": 209,
+      "underwrite_pass_realization_fail": 10,
+      "hard_reject_rows": 76
+    },
+    "top_reject_reasons": [
+      {
+        "reason": "debt wall coverage fails survival tripwire",
+        "count": 76
+      }
+    ]
+  },
+  "signals_month_end_path": "reports/backtests/smoke_tushare_inputs_diag/signals_month_end.csv",
+  "daily_bars_path": "reports/backtests/smoke_tushare_inputs_diag/daily_bars.csv"
+}

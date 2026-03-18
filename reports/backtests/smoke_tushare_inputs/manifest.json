@@ -1,0 +1,20 @@
+{
+  "tickers": [
+    "600328",
+    "600348",
+    "600893"
+  ],
+  "skipped": [],
+  "rows": {
+    "signals_month_end": 209,
+    "daily_bars": 4355
+  },
+  "limitations": [
+    "tushare_pit_v1",
+    "requires TUSHARE_TOKEN and a reachable Tushare Pro account",
+    "revenue breakdown depends on fina_mainbz availability per ticker",
+    "order execution still follows the deterministic local backtest protocol"
+  ],
+  "signals_month_end_path": "reports/backtests/smoke_tushare_inputs/signals_month_end.csv",
+  "daily_bars_path": "reports/backtests/smoke_tushare_inputs/daily_bars.csv"
+}

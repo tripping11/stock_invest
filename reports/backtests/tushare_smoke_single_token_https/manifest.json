@@ -1,0 +1,18 @@
+{
+  "tickers": [
+    "600328"
+  ],
+  "skipped": [],
+  "rows": {
+    "signals_month_end": 0,
+    "daily_bars": 58
+  },
+  "limitations": [
+    "tushare_pit_v1",
+    "requires TUSHARE_TOKEN and a reachable Tushare Pro account",
+    "revenue breakdown depends on fina_mainbz availability per ticker",
+    "order execution still follows the deterministic local backtest protocol"
+  ],
+  "signals_month_end_path": "/Users/hz/hz/A价投+周期/reports/backtests/tushare_smoke_single_token_https/signals_month_end.csv",
+  "daily_bars_path": "/Users/hz/hz/A价投+周期/reports/backtests/tushare_smoke_single_token_https/daily_bars.csv"
+}

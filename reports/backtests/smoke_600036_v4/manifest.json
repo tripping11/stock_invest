@@ -1,0 +1,45 @@
+{
+  "tickers": [
+    "600036"
+  ],
+  "skipped": [],
+  "rows": {
+    "signals_month_end": 70,
+    "daily_bars": 1456
+  },
+  "limitations": [
+    "tushare_pit_v1",
+    "requires TUSHARE_TOKEN and a reachable Tushare Pro account",
+    "revenue breakdown depends on fina_mainbz availability per ticker",
+    "order execution still follows the deterministic local backtest protocol"
+  ],
+  "diagnostics": {
+    "vcrf_state_counts": {
+      "REJECT": 48,
+      "READY": 20,
+      "ATTACK": 2
+    },
+    "position_state_counts": {
+      "reject": 48,
+      "ready": 20,
+      "attack": 2
+    },
+    "tradable_flag_counts": {
+      "1": 70
+    },
+    "attack_gate": {
+      "min_underwrite": 75.0,
+      "min_realization": 70.0
+    },
+    "attack_tradable_rows": 2,
+    "bottleneck_counts": {
+      "underwrite_below_attack": 55,
+      "realization_below_attack": 68,
+      "underwrite_pass_realization_fail": 13,
+      "hard_reject_rows": 0
+    },
+    "top_reject_reasons": []
+  },
+  "signals_month_end_path": "reports/backtests/smoke_600036_v4/signals_month_end.csv",
+  "daily_bars_path": "reports/backtests/smoke_600036_v4/daily_bars.csv"
+}

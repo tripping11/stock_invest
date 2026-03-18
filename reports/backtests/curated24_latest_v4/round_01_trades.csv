@@ -1,0 +1,2 @@
+ticker,entry_date,exit_date,entry_price,exit_price,shares,hold_bars,hold_days,exit_reason,gross_return,net_pnl,annualized_return
+600036,2022-11-01,2022-11-01,24.2335,29.3153,13700,1,1,floor_stop,0.209702,68991.96,1.5054482693906636e+30
