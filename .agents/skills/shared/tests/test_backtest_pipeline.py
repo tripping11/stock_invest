@@ -378,3 +378,92 @@ class RoundProtocolBacktestTests(unittest.TestCase):
         self.assertEqual(trades.set_index("ticker").loc["AAA", "exit_reason"], "target_hit")
         self.assertEqual(trades.set_index("ticker").loc["BBB", "exit_reason"], "floor_stop")
         self.assertEqual(trades.set_index("ticker").loc["CCC", "exit_reason"], "state_reject")
+
+    def test_backtest_uses_last_known_price_for_suspended_position_equity(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {"signal_date": "2020-01-31", "effective_date": "2020-02-03", "ticker": "AAA", "vcrf_state": "ATTACK", "floor_price": 1.0, "recognition_price": 100.0, "total_score": 95.0, "tradable_flag": 1},
+                    {"signal_date": "2020-01-31", "effective_date": "2020-02-03", "ticker": "BBB", "vcrf_state": "ATTACK", "floor_price": 1.0, "recognition_price": 100.0, "total_score": 90.0, "tradable_flag": 1},
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-02-04", "2020-02-05"]),
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"date": "2020-02-03", "ticker": "AAA", "open": 10.0, "high": 11.0, "low": 10.0, "close": 11.0},
+                {"date": "2020-02-03", "ticker": "BBB", "open": 20.0, "high": 21.0, "low": 20.0, "close": 21.0},
+                {"date": "2020-02-04", "ticker": "BBB", "open": 21.0, "high": 22.0, "low": 21.0, "close": 22.0},
+                {"date": "2020-02-05", "ticker": "AAA", "open": 11.0, "high": 11.0, "low": 11.0, "close": 11.0},
+                {"date": "2020-02-05", "ticker": "BBB", "open": 22.0, "high": 22.0, "low": 22.0, "close": 22.0},
+            ]
+        )
+
+        result = run_vcrf_backtest(
+            month_end,
+            daily_bars,
+            protocol={
+                "initial_cash": 1_000_000,
+                "round_size": 2,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "lot_size": 100,
+                "max_holding_bars": 504,
+                "same_bar_conflict": "stop_first",
+                "costs": {
+                    "broker_commission_bps": 0.0,
+                    "broker_min_commission": 0.0,
+                    "transfer_fee_bps": 0.0,
+                    "slippage_bps_buy": 0.0,
+                    "slippage_bps_sell": 0.0,
+                    "stamp_duty": [],
+                },
+            },
+        )
+
+        equity = result["rounds"][0]["equity"].set_index("date")
+        self.assertEqual(float(equity.loc[pd.Timestamp("2020-02-04"), "equity"]), 1_100_000.0)
+
+    def test_backtest_closes_suspended_position_at_end_of_data_with_last_known_price(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {"signal_date": "2020-01-31", "effective_date": "2020-02-03", "ticker": "AAA", "vcrf_state": "ATTACK", "floor_price": 1.0, "recognition_price": 100.0, "total_score": 95.0, "tradable_flag": 1},
+                    {"signal_date": "2020-01-31", "effective_date": "2020-02-03", "ticker": "BBB", "vcrf_state": "ATTACK", "floor_price": 1.0, "recognition_price": 100.0, "total_score": 90.0, "tradable_flag": 1},
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-02-04"]),
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"date": "2020-02-03", "ticker": "AAA", "open": 10.0, "high": 11.0, "low": 10.0, "close": 11.0},
+                {"date": "2020-02-03", "ticker": "BBB", "open": 20.0, "high": 21.0, "low": 20.0, "close": 21.0},
+                {"date": "2020-02-04", "ticker": "BBB", "open": 21.0, "high": 22.0, "low": 21.0, "close": 22.0},
+            ]
+        )
+
+        result = run_vcrf_backtest(
+            month_end,
+            daily_bars,
+            protocol={
+                "initial_cash": 1_000_000,
+                "round_size": 2,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "lot_size": 100,
+                "max_holding_bars": 504,
+                "same_bar_conflict": "stop_first",
+                "costs": {
+                    "broker_commission_bps": 0.0,
+                    "broker_min_commission": 0.0,
+                    "transfer_fee_bps": 0.0,
+                    "slippage_bps_buy": 0.0,
+                    "slippage_bps_sell": 0.0,
+                    "stamp_duty": [],
+                },
+            },
+        )
+
+        trades = result["rounds"][0]["trades"].set_index("ticker")
+        self.assertEqual(trades.loc["AAA", "exit_reason"], "end_of_data_suspended")
+        self.assertEqual(float(trades.loc["AAA", "exit_price"]), 11.0)

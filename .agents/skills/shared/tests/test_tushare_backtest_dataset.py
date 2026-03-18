@@ -17,6 +17,7 @@ from adapters.tushare_adapter import (
     resolve_tushare_tokens,
 )
 from engines.tushare_backtest_dataset_engine import (
+    _to_ts_code,
     _normalize_tushare_balance_records,
     _normalize_tushare_daily_bars,
     build_tushare_backtest_inputs,
@@ -90,6 +91,12 @@ class TushareAdapterTests(unittest.TestCase):
 
 
 class TushareBacktestBuilderTests(unittest.TestCase):
+    def test_to_ts_code_maps_beijing_exchange_prefixes(self) -> None:
+        self.assertEqual(_to_ts_code("830799"), "830799.BJ")
+        self.assertEqual(_to_ts_code("430047"), "430047.BJ")
+        self.assertEqual(_to_ts_code("600328"), "600328.SH")
+        self.assertEqual(_to_ts_code("000001"), "000001.SZ")
+
     def test_normalize_tushare_daily_bars_applies_adjustment_factor_in_one_coordinate_system(self) -> None:
         daily_records = [
             {"trade_date": "20240102", "open": 10.0, "high": 11.0, "low": 9.0, "close": 10.5, "vol": 100, "amount": 200},
@@ -166,8 +173,28 @@ class TushareBacktestBuilderTests(unittest.TestCase):
 
         fake_gate = {
             "position_state": "attack",
-            "underwrite_axis": {"score": 82.0},
-            "realization_axis": {"score": 74.0},
+            "underwrite_axis": {
+                "score": 82.0,
+                "components": {
+                    "intrinsic_value_floor": {"score": 80.0},
+                    "survival_boundary": {"score": 81.0},
+                    "governance_anti_fraud": {"score": 82.0},
+                    "business_or_asset_quality": {"score": 83.0},
+                    "normalized_earnings_power": {"score": 84.0},
+                },
+            },
+            "realization_axis": {
+                "score": 74.0,
+                "flow_stage": "trend",
+                "components": {
+                    "repair_state": {"score": 70.0},
+                    "regime_cycle_position": {"score": 71.0},
+                    "marginal_buyer_probability": {"score": 72.0},
+                    "flow_confirmation": {"score": 73.0},
+                    "elasticity": {"score": 74.0},
+                    "catalyst_quality": {"score": 75.0},
+                },
+            },
             "driver_stack": {"primary_type": "cyclical", "sector_route": "core_resource"},
             "scorecard": {"verdict": "high conviction / strong candidate"},
             "hard_vetos": [],
@@ -193,6 +220,22 @@ class TushareBacktestBuilderTests(unittest.TestCase):
         self.assertEqual(signals["ticker"].tolist(), ["600328", "600328", "600328"])
         self.assertEqual(signals["vcrf_state"].tolist(), ["ATTACK", "ATTACK", "ATTACK"])
         self.assertTrue((signals["tradable_flag"] == 1).all())
+        self.assertTrue({"underwrite_score", "realization_score", "position_state"}.issubset(signals.columns))
+        self.assertTrue(
+            {
+                "underwrite_intrinsic_value_floor_score",
+                "underwrite_survival_boundary_score",
+                "realization_flow_confirmation_score",
+                "realization_catalyst_quality_score",
+                "flow_stage",
+            }.issubset(signals.columns)
+        )
+        self.assertEqual(float(signals.iloc[0]["underwrite_intrinsic_value_floor_score"]), 80.0)
+        self.assertEqual(float(signals.iloc[0]["realization_flow_confirmation_score"]), 73.0)
+        self.assertEqual(signals.iloc[0]["flow_stage"], "trend")
+        diagnostics = result["manifest"]["diagnostics"]
+        self.assertEqual(diagnostics["vcrf_state_counts"]["ATTACK"], 3)
+        self.assertEqual(diagnostics["attack_tradable_rows"], 3)
 
 
 if __name__ == "__main__":

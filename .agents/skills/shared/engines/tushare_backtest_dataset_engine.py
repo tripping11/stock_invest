@@ -32,6 +32,7 @@ from engines.public_backtest_dataset_engine import (
     month_end_trade_dates,
 )
 from engines.valuation_engine import build_three_case_valuation
+from utils.config_loader import load_vcrf_state_machine
 from utils.value_utils import normalize_text, safe_float
 from validators.universal_gate import evaluate_universal_gates
 
@@ -325,6 +326,88 @@ def _build_scan_data_as_of(bundle: dict[str, Any], signal_date: pd.Timestamp) ->
     }
 
 
+def _series_count_map(series: pd.Series) -> dict[str, int]:
+    if series.empty:
+        return {}
+    counts = series.fillna("NA").astype(str).value_counts(dropna=False)
+    return {str(key): int(value) for key, value in counts.items()}
+
+
+def _top_reject_reasons(signals_month_end: pd.DataFrame, *, limit: int = 10) -> list[dict[str, Any]]:
+    if signals_month_end.empty or "reject_reason" not in signals_month_end.columns:
+        return []
+    reason_counts: dict[str, int] = {}
+    for raw_value in signals_month_end["reject_reason"].fillna("").astype(str):
+        for reason in (item.strip() for item in raw_value.split(";")):
+            if not reason:
+                continue
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+    ranked = sorted(reason_counts.items(), key=lambda item: (-item[1], item[0]))
+    return [{"reason": reason, "count": count} for reason, count in ranked[:limit]]
+
+
+def _build_signal_diagnostics(signals_month_end: pd.DataFrame) -> dict[str, Any]:
+    state_cfg = (load_vcrf_state_machine().get("state_thresholds", {}) or {}).get("attack", {}) or {}
+    attack_min_underwrite = float(state_cfg.get("min_underwrite", 75.0))
+    attack_min_realization = float(state_cfg.get("min_realization", 70.0))
+
+    if signals_month_end.empty:
+        return {
+            "vcrf_state_counts": {},
+            "position_state_counts": {},
+            "tradable_flag_counts": {},
+            "attack_gate": {
+                "min_underwrite": attack_min_underwrite,
+                "min_realization": attack_min_realization,
+            },
+            "attack_tradable_rows": 0,
+            "bottleneck_counts": {
+                "underwrite_below_attack": 0,
+                "realization_below_attack": 0,
+                "underwrite_pass_realization_fail": 0,
+                "hard_reject_rows": 0,
+            },
+            "top_reject_reasons": [],
+        }
+
+    underwrite = pd.to_numeric(signals_month_end.get("underwrite_score"), errors="coerce")
+    realization = pd.to_numeric(signals_month_end.get("realization_score"), errors="coerce")
+    tradable = pd.to_numeric(signals_month_end.get("tradable_flag", 0), errors="coerce").fillna(0).astype(int)
+    vcrf_state = signals_month_end.get("vcrf_state", pd.Series(dtype="object")).fillna("NA").astype(str)
+    position_state = signals_month_end.get("position_state", pd.Series(dtype="object")).fillna("NA").astype(str)
+
+    underwrite_pass = underwrite >= attack_min_underwrite
+    realization_pass = realization >= attack_min_realization
+    attack_tradable = (vcrf_state == "ATTACK") & (tradable == 1)
+    reject_reason = signals_month_end.get("reject_reason", pd.Series(dtype="object")).fillna("").astype(str)
+
+    return {
+        "vcrf_state_counts": _series_count_map(vcrf_state),
+        "position_state_counts": _series_count_map(position_state),
+        "tradable_flag_counts": _series_count_map(tradable.astype(str)),
+        "attack_gate": {
+            "min_underwrite": attack_min_underwrite,
+            "min_realization": attack_min_realization,
+        },
+        "attack_tradable_rows": int(attack_tradable.sum()),
+        "bottleneck_counts": {
+            "underwrite_below_attack": int((~underwrite_pass.fillna(False)).sum()),
+            "realization_below_attack": int((~realization_pass.fillna(False)).sum()),
+            "underwrite_pass_realization_fail": int((underwrite_pass.fillna(False) & ~realization_pass.fillna(False)).sum()),
+            "hard_reject_rows": int(reject_reason.str.strip().ne("").sum()),
+        },
+        "top_reject_reasons": _top_reject_reasons(signals_month_end),
+    }
+
+
+def _flatten_axis_component_scores(axis: dict[str, Any] | None, prefix: str) -> dict[str, float | str | None]:
+    payload: dict[str, float | str | None] = {}
+    components = (axis or {}).get("components", {}) or {}
+    for name, component in components.items():
+        payload[f"{prefix}_{name}_score"] = safe_float((component or {}).get("score"))
+    return payload
+
+
 def build_tushare_backtest_inputs(
     *,
     tickers: list[str],
@@ -385,8 +468,11 @@ def build_tushare_backtest_inputs(
                     "position_state": normalize_text(gate_result.get("position_state")).lower(),
                     "primary_type": normalize_text((gate_result.get("driver_stack") or {}).get("primary_type")).lower(),
                     "sector_route": normalize_text((gate_result.get("driver_stack") or {}).get("sector_route")).lower(),
+                    "flow_stage": normalize_text((gate_result.get("realization_axis") or {}).get("flow_stage")).lower(),
                     "announcement_date": signal_date.normalize(),
                     "reject_reason": "; ".join(gate_result.get("hard_vetos", []) or []),
+                    **_flatten_axis_component_scores(gate_result.get("underwrite_axis"), "underwrite"),
+                    **_flatten_axis_component_scores(gate_result.get("realization_axis"), "realization"),
                 }
             )
 
@@ -412,5 +498,6 @@ def build_tushare_backtest_inputs(
                 "revenue breakdown depends on fina_mainbz availability per ticker",
                 "order execution still follows the deterministic local backtest protocol",
             ],
+            "diagnostics": _build_signal_diagnostics(signals_month_end),
         },
     }
