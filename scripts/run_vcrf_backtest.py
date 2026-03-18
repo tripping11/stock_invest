@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -20,7 +21,13 @@ from engines.backtest_engine import run_vcrf_backtest  # noqa: E402
 def _read_frame(path: Path) -> pd.DataFrame:
     if path.suffix.lower() == ".parquet":
         return pd.read_parquet(path)
-    return pd.read_csv(path)
+    return pd.read_csv(path, dtype={"ticker": str})
+
+
+def _json_cell(value: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return value
 
 
 def _write_frame(df: pd.DataFrame, path: Path) -> Path:
@@ -31,9 +38,15 @@ def _write_frame(df: pd.DataFrame, path: Path) -> Path:
             return path
         except Exception:
             fallback = path.with_suffix(".csv")
-            df.to_csv(fallback, index=False)
+            frame = df.copy()
+            for column in frame.columns:
+                frame[column] = frame[column].map(_json_cell)
+            frame.to_csv(fallback, index=False)
             return fallback
-    df.to_csv(path, index=False)
+    frame = df.copy()
+    for column in frame.columns:
+        frame[column] = frame[column].map(_json_cell)
+    frame.to_csv(path, index=False)
     return path
 
 

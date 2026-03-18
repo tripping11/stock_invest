@@ -1,5 +1,8 @@
 import sys
+import tempfile
+import json
 import unittest
+import importlib.util
 from pathlib import Path
 
 import pandas as pd
@@ -9,7 +12,7 @@ SHARED_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SHARED_DIR))
 
 from engines.backtest_engine import run_vcrf_backtest, select_round_candidates
-from engines.flow_realization_engine import score_elasticity, score_flow_confirmation
+from engines.flow_realization_engine import score_elasticity, score_flow_confirmation, score_realization_axis
 from engines.signal_library_engine import expand_signal_daily, normalize_signal_month_end, resolve_effective_date
 from engines.valuation_engine import build_three_case_valuation
 from utils.config_loader import load_backtest_protocol
@@ -44,6 +47,65 @@ class SurvivalProbeUpgradeTests(unittest.TestCase):
         self.assertAlmostEqual(result["cfo_support"], 0.10, places=2)
         self.assertTrue(result["tripwire_reject"])
         self.assertLess(result["score"], 40.0)
+
+    def test_survival_probe_uses_lower_tripwire_for_cyclical_non_soe_names(self) -> None:
+        result = assess_survival_boundary(
+            {
+                "company_profile": {"data": {"实际控制人": "自然人"}},
+                "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 20_000_000}]},
+                "balance_sheet": {
+                    "data": [
+                        {
+                            "报告期": "20241231",
+                            "资产总计": 2_000_000_000,
+                            "归属于母公司所有者权益合计": 200_000_000,
+                            "货币资金": 200_000_000,
+                            "交易性金融资产": 0,
+                            "短期借款": 300_000_000,
+                            "一年内到期的非流动负债": 200_000_000,
+                        }
+                    ]
+                },
+                "cashflow_statement": {"data": [{"报告期": "20241231", "经营活动产生的现金流量净额": -20_000_000}]},
+            },
+            {"primary_type": "cyclical", "sector_route": "core_resource"},
+        )
+
+        self.assertAlmostEqual(result["cash_coverage"], 0.40, places=2)
+        self.assertAlmostEqual(result["tripwire_threshold"], 0.30, places=2)
+        self.assertFalse(result["tripwire_reject"])
+
+    def test_survival_probe_marks_no_debt_wall_with_liquid_assets_as_full_availability(self) -> None:
+        result = assess_survival_boundary(
+            {
+                "company_profile": {"data": {"实际控制人": "自然人"}},
+                "income_statement": {
+                    "data": [
+                        {
+                            "报告期": "20241231",
+                            "归属于母公司所有者的净利润": 20_000_000,
+                            "利润总额": 40_000_000,
+                            "财务费用": 20_000_000,
+                        }
+                    ]
+                },
+                "balance_sheet": {
+                    "data": [
+                        {
+                            "报告期": "20241231",
+                            "资产总计": 2_000_000_000,
+                            "归属于母公司所有者权益合计": 500_000_000,
+                            "交易性金融资产": 300_000_000,
+                        }
+                    ]
+                },
+                "cashflow_statement": {"data": [{"报告期": "20241231", "经营活动产生的现金流量净额": 50_000_000}]},
+            }
+        )
+
+        self.assertEqual(result["availability"], "full")
+        self.assertAlmostEqual(result["cash_coverage"], 2.0, places=2)
+        self.assertFalse(result["tripwire_reject"])
 
 
 class FlowAndElasticityUpgradeTests(unittest.TestCase):
@@ -104,6 +166,57 @@ class FlowAndElasticityUpgradeTests(unittest.TestCase):
 
         self.assertGreaterEqual(result["score"], 90.0)
         self.assertEqual(result["flow_stage"], "trend")
+
+    def test_realization_axis_reweights_cyclical_scores_away_from_repair_and_default_50s(self) -> None:
+        result = score_realization_axis(
+            {
+                "realtime_quote": {"data": {"流通市值": 60_000_000_000}},
+                "stock_kline": {
+                    "data": {
+                        "current_vs_5yr_high": 45.0,
+                        "drawdown_from_5yr_high_pct": 55.0,
+                        "pulse_volume_events_30d": 2,
+                        "avg_turnover_20d": 800_000_000,
+                        "avg_turnover_120d": 300_000_000,
+                        "volume_ratio_20_vs_120": 1.4,
+                        "avg_turnover_1y": 700_000_000,
+                        "latest_close": 10.0,
+                        "low_5y": 7.0,
+                    }
+                },
+                "event_signals": {},
+            },
+            {
+                "market": "A-share",
+                "primary_type": "cyclical",
+                "sector_route": "core_resource",
+                "modifiers": {
+                    "repair_state": "none",
+                    "cycle_state": "trough",
+                    "elasticity_bucket": "large",
+                    "realization_path": "repricing",
+                    "flow_stage": "latent",
+                },
+            },
+        )
+
+        self.assertGreater(result["score"], 70.0)
+        self.assertEqual(result["weights_used"]["repair_state"], 0.0)
+        self.assertEqual(result["weights_used"]["marginal_buyer_probability"], 0.0)
+        self.assertEqual(result["weights_used"]["catalyst_quality"], 0.0)
+        self.assertGreater(result["weights_used"]["regime_cycle_position"], 0.45)
+        self.assertGreater(result["weights_used"]["flow_confirmation"], 0.30)
+
+    def test_elasticity_softens_large_liquid_cyclical_penalty(self) -> None:
+        result = score_elasticity(
+            {
+                "realtime_quote": {"data": {"流通市值": 60_000_000_000}},
+                "stock_kline": {"data": {"avg_turnover_20d": 800_000_000}},
+            },
+            {"primary_type": "cyclical", "modifiers": {"flow_stage": "latent", "elasticity_bucket": "large"}},
+        )
+
+        self.assertGreaterEqual(result["score"], 45.0)
 
 
 class ValuationNormalizationTests(unittest.TestCase):
@@ -252,6 +365,34 @@ class SignalLibraryTests(unittest.TestCase):
 
 
 class RoundProtocolBacktestTests(unittest.TestCase):
+    def test_backtest_csv_writer_serializes_summary_objects_as_json(self) -> None:
+        repo_root = Path(__file__).resolve().parents[4]
+        script_path = repo_root / "scripts" / "run_vcrf_backtest.py"
+        spec = importlib.util.spec_from_file_location("run_vcrf_backtest_script_test", script_path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        frame = pd.DataFrame(
+            [
+                {
+                    "round_id": 1,
+                    "exit_reason_counts": {"state_reject": 1, "target_hit": 2},
+                    "candidate_diagnostics": [{"ticker": "AAA", "underwrite_score": 80.0}],
+                    "anomalies": [],
+                }
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = Path(tmpdir) / "round_summary.csv"
+            module._write_frame(frame, out_path)
+            written = pd.read_csv(out_path)
+
+        self.assertEqual(json.loads(written.loc[0, "exit_reason_counts"]), {"state_reject": 1, "target_hit": 2})
+        self.assertEqual(json.loads(written.loc[0, "candidate_diagnostics"]), [{"ticker": "AAA", "underwrite_score": 80.0}])
+        self.assertEqual(json.loads(written.loc[0, "anomalies"]), [])
+
     def test_round_selection_only_keeps_attack_candidates(self) -> None:
         month_end = normalize_signal_month_end(
             pd.DataFrame(
@@ -378,6 +519,108 @@ class RoundProtocolBacktestTests(unittest.TestCase):
         self.assertEqual(trades.set_index("ticker").loc["AAA", "exit_reason"], "target_hit")
         self.assertEqual(trades.set_index("ticker").loc["BBB", "exit_reason"], "floor_stop")
         self.assertEqual(trades.set_index("ticker").loc["CCC", "exit_reason"], "state_reject")
+
+    def test_backtest_does_not_trigger_floor_stop_when_floor_is_above_entry(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "AAA",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 12.0,
+                        "recognition_price": 20.0,
+                        "total_score": 95.0,
+                        "tradable_flag": 1,
+                    }
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-02-04"]),
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"date": "2020-02-03", "ticker": "AAA", "open": 10.0, "high": 10.5, "low": 9.5, "close": 10.1},
+                {"date": "2020-02-04", "ticker": "AAA", "open": 10.2, "high": 10.3, "low": 9.9, "close": 10.0},
+            ]
+        )
+
+        result = run_vcrf_backtest(
+            month_end,
+            daily_bars,
+            protocol={
+                "initial_cash": 1_000_000,
+                "round_size": 1,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "lot_size": 100,
+                "max_holding_bars": 504,
+                "same_bar_conflict": "stop_first",
+                "costs": {
+                    "broker_commission_bps": 0.0,
+                    "broker_min_commission": 0.0,
+                    "transfer_fee_bps": 0.0,
+                    "slippage_bps_buy": 0.0,
+                    "slippage_bps_sell": 0.0,
+                    "stamp_duty": [],
+                },
+            },
+        )
+
+        trades = result["rounds"][0]["trades"].set_index("ticker")
+        self.assertEqual(trades.loc["AAA", "exit_reason"], "end_of_data")
+
+    def test_backtest_uses_max_loss_stop_when_floor_is_above_entry(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "AAA",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 12.0,
+                        "recognition_price": 20.0,
+                        "total_score": 95.0,
+                        "tradable_flag": 1,
+                    }
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-02-04"]),
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"date": "2020-02-03", "ticker": "AAA", "open": 10.0, "high": 10.5, "low": 9.5, "close": 10.1},
+                {"date": "2020-02-04", "ticker": "AAA", "open": 10.2, "high": 10.3, "low": 7.8, "close": 8.1},
+            ]
+        )
+
+        result = run_vcrf_backtest(
+            month_end,
+            daily_bars,
+            protocol={
+                "initial_cash": 1_000_000,
+                "round_size": 1,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "lot_size": 100,
+                "max_holding_bars": 504,
+                "max_loss_pct": 0.20,
+                "same_bar_conflict": "stop_first",
+                "costs": {
+                    "broker_commission_bps": 0.0,
+                    "broker_min_commission": 0.0,
+                    "transfer_fee_bps": 0.0,
+                    "slippage_bps_buy": 0.0,
+                    "slippage_bps_sell": 0.0,
+                    "stamp_duty": [],
+                },
+            },
+        )
+
+        trades = result["rounds"][0]["trades"].set_index("ticker")
+        self.assertEqual(trades.loc["AAA", "exit_reason"], "max_loss_stop")
+        self.assertAlmostEqual(float(trades.loc["AAA", "exit_price"]), 8.0, places=4)
 
     def test_backtest_uses_last_known_price_for_suspended_position_equity(self) -> None:
         month_end = normalize_signal_month_end(

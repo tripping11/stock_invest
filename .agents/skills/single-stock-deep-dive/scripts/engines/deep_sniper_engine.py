@@ -16,7 +16,7 @@ SKILLS_DIR = Path(__file__).resolve().parents[3]
 SHARED_DIR = SKILLS_DIR / "shared"
 sys.path.insert(0, str(SHARED_DIR))
 
-from adapters.akshare_adapter import run_full_scan  # noqa: E402
+from adapters.provider_router import run_full_scan  # noqa: E402
 from adapters.cninfo_adapter import run_tier0_prep  # noqa: E402
 from adapters.commodity_adapter import run_commodity_scan  # noqa: E402
 from adapters.docling_page_adapter import run_docling_page_parse  # noqa: E402
@@ -27,6 +27,7 @@ from engines.report_engine import generate_deep_dive_report  # noqa: E402
 from engines.synthesis_engine import build_investment_synthesis  # noqa: E402
 from engines.valuation_engine import build_three_case_valuation  # noqa: E402
 from utils.framework_utils import determine_opportunity_type, normalize_text  # noqa: E402
+from utils.market_utils import infer_market_from_stock_code  # noqa: E402
 from utils.runtime_paths import resolve_base_dir, stock_paths  # noqa: E402
 from validators.tier0_autofill import run_tier0_autofill  # noqa: E402
 from validators.tier0_verifier import run_tier0_verification  # noqa: E402
@@ -132,7 +133,7 @@ def deep_sniper(
     report_result = generate_deep_dive_report(
         stock_code,
         company_name,
-        market=DEFAULTS.get("market", "A-share"),
+        market=infer_market_from_stock_code(stock_code) or DEFAULTS.get("market", "A-share"),
         scan_data=scan_data,
         gate_result=gate_result,
         valuation_result=valuation_result,

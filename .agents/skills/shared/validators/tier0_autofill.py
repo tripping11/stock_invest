@@ -7,6 +7,7 @@ import re
 import sys
 from pathlib import Path
 
+from adapters.provider_router import load_scan_cache
 from utils.evidence_helpers import now_ts
 from utils.financial_snapshot import (
     extract_latest_revenue_snapshot,
@@ -443,11 +444,12 @@ def run_tier0_autofill(
 if __name__ == "__main__":
     code = sys.argv[1] if len(sys.argv) > 1 else "600328"
     base = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(__file__).resolve().parents[5] / "evidence" / code
-    raw_path = Path(__file__).resolve().parents[5] / "data" / "raw" / code / "akshare_scan.json"
+    raw_dir = Path(__file__).resolve().parents[5] / "data" / "raw" / code
     tier0_path = base / "tier0_checklist.json"
     pdf_path = base / "pdf_index" / "pdf_index_manifest.json"
-    with open(raw_path, "r", encoding="utf-8") as f:
-        scan_data = json.load(f)
+    scan_data = load_scan_cache(raw_dir)
+    if not scan_data:
+        raise FileNotFoundError(f"no Tier1 scan cache found under {raw_dir}")
     with open(tier0_path, "r", encoding="utf-8") as f:
         tier0_prep = json.load(f)
     with open(pdf_path, "r", encoding="utf-8") as f:

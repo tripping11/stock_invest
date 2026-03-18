@@ -110,6 +110,47 @@ def _approx_altman_z(total_assets: float | None, total_equity: float | None, net
     return 3.25 + 6.56 * working_capital_ratio + 3.26 * equity_ratio + 6.72 * profit_ratio
 
 
+def _extract_interest_coverage(income_row: dict[str, Any]) -> float | None:
+    if not income_row:
+        return None
+    earnings_before_interest = None
+    for key in (
+        "EBIT",
+        "ebit",
+        "息税前利润",
+        "营业利润",
+        "operate_profit",
+        "利润总额",
+        "total_profit",
+        "利润总额(元)",
+    ):
+        earnings_before_interest = safe_float(income_row.get(key))
+        if earnings_before_interest is not None:
+            break
+    interest_expense = None
+    for key in (
+        "利息支出",
+        "利息费用",
+        "财务费用",
+        "int_exp",
+        "interest_expense",
+        "fin_exp",
+    ):
+        interest_expense = safe_float(income_row.get(key))
+        if interest_expense is not None:
+            break
+    if earnings_before_interest is None or interest_expense in (None, 0):
+        return None
+    return earnings_before_interest / abs(interest_expense)
+
+
+def _survival_tripwire_threshold(driver_stack: dict[str, Any] | None, *, state_owned_support: bool) -> float:
+    primary_type = normalize_text((driver_stack or {}).get("primary_type")).lower()
+    if state_owned_support or primary_type == "cyclical":
+        return 0.30
+    return 0.80
+
+
 def assess_survival_boundary(scan_data: dict[str, Any], driver_stack: dict[str, Any] | None = None) -> dict[str, Any]:
     cashflow = get_latest_cashflow_snapshot(scan_data.get("cashflow_statement", {}).get("data", [])).get("operating_cashflow")
     balance_snapshot = get_latest_balance_snapshot(scan_data.get("balance_sheet", {}).get("data", []))
@@ -131,6 +172,7 @@ def assess_survival_boundary(scan_data: dict[str, Any], driver_stack: dict[str, 
     if total_assets not in (None, 0) and debt_wall is not None:
         net_cash_ratio = (liquid_assets - debt_wall) / total_assets
     z_score = _approx_altman_z(total_assets, total_equity, income_snapshot.get("net_profit"), liquid_assets, debt_wall)
+    interest_coverage = _extract_interest_coverage(income_snapshot.get("raw", {}))
     equity_positive = total_equity is not None and total_equity > 0
     controller_text = " ".join(
         normalize_text(value)
@@ -141,11 +183,13 @@ def assess_survival_boundary(scan_data: dict[str, Any], driver_stack: dict[str, 
         if value
     )
     state_owned_support = any(token in controller_text for token in ("国资", "国有", "国务院", "财政", "地方政府", "国资委", "SASAC"))
+    tripwire_threshold = _survival_tripwire_threshold(driver_stack, state_owned_support=state_owned_support)
+    interest_coverage_bypass = interest_coverage is not None and interest_coverage >= 1.50
     tripwire_reject = bool(
         debt_wall not in (None, 0)
         and cash_coverage is not None
-        and cash_coverage < 0.80
-        and not state_owned_support
+        and cash_coverage < tripwire_threshold
+        and not interest_coverage_bypass
     )
 
     score = (
@@ -157,7 +201,7 @@ def assess_survival_boundary(scan_data: dict[str, Any], driver_stack: dict[str, 
     )
     if tripwire_reject:
         score = min(score, 20.0)
-    availability = "full" if cash is not None and total_equity is not None and debt_wall is not None else "missing"
+    availability = "full" if total_equity is not None and any(value is not None for value in (cash_coverage, cfo_support, z_score)) else "missing"
     confidence = "full" if availability == "full" else "degraded"
     return _component_payload(
         score,
@@ -165,7 +209,8 @@ def assess_survival_boundary(scan_data: dict[str, Any], driver_stack: dict[str, 
         confidence=confidence,
         reason=(
             f"cash_coverage={cash_coverage}, cfo_support={cfo_support}, net_cash_ratio={net_cash_ratio}, "
-            f"z_score={z_score}, equity_positive={equity_positive}, tripwire_reject={tripwire_reject}"
+            f"z_score={z_score}, interest_coverage={interest_coverage}, equity_positive={equity_positive}, "
+            f"tripwire_threshold={tripwire_threshold}, tripwire_reject={tripwire_reject}"
         ),
         inputs_used={
             "operating_cashflow": cashflow,
@@ -174,6 +219,7 @@ def assess_survival_boundary(scan_data: dict[str, Any], driver_stack: dict[str, 
             "trading_financial_assets": tradable_financial_assets,
             "total_assets": total_assets,
             "total_equity": total_equity,
+            "interest_coverage": interest_coverage,
         },
         extra={
             "coverage": cash_coverage,
@@ -181,8 +227,11 @@ def assess_survival_boundary(scan_data: dict[str, Any], driver_stack: dict[str, 
             "cfo_support": cfo_support,
             "net_cash_ratio": net_cash_ratio,
             "z_score": z_score,
+            "interest_coverage": interest_coverage,
             "equity_positive": equity_positive,
             "state_owned_support": state_owned_support,
+            "tripwire_threshold": tripwire_threshold,
+            "interest_coverage_bypass": interest_coverage_bypass,
             "tripwire_reject": tripwire_reject,
         },
     )
@@ -354,4 +403,5 @@ def score_underwrite_axis(scan_data: dict[str, Any], driver_stack: dict[str, Any
         "score": round(score, 2),
         "confidence": confidence,
         "components": components,
+        "weights_used": {name: round(float(value), 6) for name, value in weights.items()},
     }

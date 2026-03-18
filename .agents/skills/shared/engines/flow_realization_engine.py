@@ -48,6 +48,15 @@ _CATALYST_PATH_SCORE = {
     "repricing": 50,
 }
 
+_REALIZATION_REDISTRIBUTION_TARGETS = (
+    "regime_cycle_position",
+    "flow_confirmation",
+)
+_REALIZATION_NEUTRAL_DROP_COMPONENTS = (
+    "marginal_buyer_probability",
+    "catalyst_quality",
+)
+
 
 @dataclass(slots=True)
 class FlowInputs:
@@ -252,6 +261,7 @@ def score_regime_cycle_position(scan_data: dict[str, Any], driver_stack: dict[st
 def score_marginal_buyer_probability(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
     shareholder_records = scan_data.get("shareholder_count", {}).get("data", []) or []
     trend_score = 50.0
+    neutral_default = True
     if len(shareholder_records) >= 2:
         latest = shareholder_records[-1]
         previous = shareholder_records[-2]
@@ -259,6 +269,7 @@ def score_marginal_buyer_probability(scan_data: dict[str, Any], driver_stack: di
         previous_count = safe_float(previous.get("股东户数") or previous.get("股东人数") or previous.get("户数"))
         if latest_count is not None and previous_count not in (None, 0):
             delta = (latest_count - previous_count) / previous_count
+            neutral_default = False
             if delta <= -0.10:
                 trend_score = 80.0
             elif delta < 0:
@@ -271,6 +282,7 @@ def score_marginal_buyer_probability(scan_data: dict[str, Any], driver_stack: di
         confidence="partial",
         reason="shareholder-count proxy",
         inputs_used={"shareholder_points": len(shareholder_records)},
+        extra={"neutral_default": neutral_default},
     )
 
 
@@ -325,7 +337,7 @@ def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, A
             0.0,
             availability="missing",
             confidence="degraded",
-            reason="us_flow_confirmation_not_implemented",
+            reason="non_a_share_flow_confirmation_not_implemented",
             inputs_used={"market": market},
             extra={"flow_stage": "latent"},
         )
@@ -376,9 +388,11 @@ def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, A
 
 def score_elasticity(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
     bucket = normalize_text(driver_stack.get("modifiers", {}).get("elasticity_bucket") or "mid").lower() or "mid"
+    primary_type = normalize_text(driver_stack.get("primary_type") or "compounder").lower() or "compounder"
     quote = scan_data.get("realtime_quote", {}).get("data", {})
     float_market_cap = extract_float_market_cap(quote) or extract_market_cap(quote)
     size_score = _continuous_float_cap_score(float_market_cap, bucket)
+    raw_size_score = size_score
     kline = scan_data.get("stock_kline", {}).get("data", {})
     turnover_20d = safe_float(kline.get("avg_turnover_20d"))
     turnover = turnover_20d if turnover_20d is not None else safe_float(kline.get("avg_turnover_1y"))
@@ -398,6 +412,14 @@ def score_elasticity(scan_data: dict[str, Any], driver_stack: dict[str, Any]) ->
         liquidity_score = 90.0
     else:
         liquidity_score = 75.0
+    size_relief_applied = False
+    if turnover is not None and turnover >= 300_000_000:
+        if primary_type == "cyclical" and float_market_cap not in (None, 0) and float_market_cap >= 30_000_000_000:
+            size_score = max(size_score, 45.0)
+            size_relief_applied = size_score != raw_size_score
+        elif primary_type == "compounder" and float_market_cap not in (None, 0) and float_market_cap >= 50_000_000_000:
+            size_score = max(size_score, 40.0)
+            size_relief_applied = size_score != raw_size_score
     if turnover is not None and turnover < hard_floor:
         score = 15.0
     else:
@@ -407,32 +429,70 @@ def score_elasticity(scan_data: dict[str, Any], driver_stack: dict[str, Any]) ->
         availability="full",
         confidence="partial",
         reason=(
-            f"float_market_cap={float_market_cap}, bucket={bucket}, avg_turnover_20d={turnover_20d}, "
-            f"crowding_penalty={crowding_penalty}"
+            f"primary_type={primary_type}, float_market_cap={float_market_cap}, bucket={bucket}, "
+            f"avg_turnover_20d={turnover_20d}, crowding_penalty={crowding_penalty}, "
+            f"size_relief_applied={size_relief_applied}"
         ),
         inputs_used={
             "bucket": bucket,
+            "primary_type": primary_type,
             "float_market_cap": float_market_cap,
             "avg_turnover_20d": turnover_20d,
             "flow_stage": flow_stage,
         },
+        extra={"size_score_raw": raw_size_score, "size_score_used": size_score, "size_relief_applied": size_relief_applied},
     )
 
 
 def score_catalyst_quality(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
     path = normalize_text(driver_stack.get("modifiers", {}).get("realization_path") or "repricing").lower() or "repricing"
+    event_signals = scan_data.get("event_signals", {}) or {}
     score = float(_CATALYST_PATH_SCORE.get(path, 50))
-    if scan_data.get("event_signals", {}).get("approved"):
+    if event_signals.get("approved"):
         score += 10
     elif path != "repricing":
         score -= 10
+    neutral_default = path == "repricing" and not event_signals
     return _component_payload(
         score,
-        availability="full",
+        availability="partial" if neutral_default else "full",
         confidence="partial",
         reason=f"realization_path={path}",
         inputs_used={"realization_path": path},
+        extra={"neutral_default": neutral_default},
     )
+
+
+def _normalize_axis_weights(weights: dict[str, Any]) -> dict[str, float]:
+    cleaned = {name: max(float(value), 0.0) for name, value in (weights or {}).items()}
+    total = sum(cleaned.values())
+    if total <= 0:
+        return {name: 0.0 for name in cleaned}
+    return {name: value / total for name, value in cleaned.items()}
+
+
+def _resolve_realization_weights(
+    *,
+    base_weights: dict[str, Any],
+    components: dict[str, dict[str, Any]],
+) -> tuple[dict[str, float], list[str]]:
+    weights = _normalize_axis_weights(base_weights)
+    released_weight = 0.0
+    neutral_dropped: list[str] = []
+    for name in _REALIZATION_NEUTRAL_DROP_COMPONENTS:
+        if bool((components.get(name) or {}).get("neutral_default")) and weights.get(name, 0.0) > 0:
+            released_weight += weights[name]
+            weights[name] = 0.0
+            neutral_dropped.append(name)
+    if released_weight > 0:
+        target_total = sum(weights.get(name, 0.0) for name in _REALIZATION_REDISTRIBUTION_TARGETS)
+        if target_total > 0:
+            for name in _REALIZATION_REDISTRIBUTION_TARGETS:
+                current_weight = weights.get(name, 0.0)
+                if current_weight <= 0:
+                    continue
+                weights[name] = current_weight + released_weight * current_weight / target_total
+    return _normalize_axis_weights(weights), neutral_dropped
 
 
 def score_realization_axis(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
@@ -446,7 +506,8 @@ def score_realization_axis(scan_data: dict[str, Any], driver_stack: dict[str, An
         "elasticity": score_elasticity(scan_data, driver_stack),
         "catalyst_quality": score_catalyst_quality(scan_data, driver_stack),
     }
-    weights = resolve_vcrf_weight_template(primary_type, sector_route)["realization"]
+    base_weights = resolve_vcrf_weight_template(primary_type, sector_route)["realization"]
+    weights, neutral_dropped = _resolve_realization_weights(base_weights=base_weights, components=components)
     score = 0.0
     for name, component in components.items():
         score += component["score"] * float(weights.get(name, 0.0))
@@ -460,4 +521,6 @@ def score_realization_axis(scan_data: dict[str, Any], driver_stack: dict[str, An
         "confidence": confidence,
         "components": components,
         "flow_stage": components["flow_confirmation"].get("flow_stage", "latent"),
+        "weights_used": {name: round(float(value), 6) for name, value in weights.items()},
+        "neutral_dropped_components": neutral_dropped,
     }

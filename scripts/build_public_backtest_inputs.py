@@ -67,7 +67,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=0, help="Optional cap on ticker count after universe resolution.")
     parser.add_argument("--discovery-limit", type=int, default=0, help="When using baostock-preferred, probe at most this many raw candidates before later filtering.")
     parser.add_argument("--require-financials", action="store_true", help="Keep only tickers with non-empty income and balance statements in current public-source adapters.")
-    parser.add_argument("--prefer-local-cache", action="store_true", help="Prefer local data/raw/<ticker>/akshare_scan.json for profile and statements when available.")
+    parser.add_argument("--prefer-local-cache", action="store_true", help="Prefer local Tier1 scan cache under data/raw/<ticker>/ for profile and statements when available.")
     parser.add_argument("--start-date", required=True, help="History start date, e.g. 2020-01-01.")
     parser.add_argument("--end-date", required=True, help="History end date, e.g. 2025-12-31.")
     parser.add_argument("--out-dir", default=str(REPO_ROOT / "reports" / "backtests" / "public_source_inputs"), help="Output directory.")

@@ -18,6 +18,7 @@ from adapters.tushare_adapter import (
     query_income,
     query_stock_basic,
     query_stock_company,
+    query_stk_holdernumber,
 )
 from engines.public_backtest_dataset_engine import (
     DEFAULT_MIN_TURNOVER,
@@ -33,6 +34,7 @@ from engines.public_backtest_dataset_engine import (
 )
 from engines.valuation_engine import build_three_case_valuation
 from utils.config_loader import load_vcrf_state_machine
+from utils.market_utils import to_tushare_code
 from utils.value_utils import normalize_text, safe_float
 from validators.universal_gate import evaluate_universal_gates
 
@@ -42,14 +44,7 @@ def _to_ts_date(value: str) -> str:
 
 
 def _to_ts_code(ticker: str) -> str:
-    text = normalize_text(ticker).upper()
-    if "." in text:
-        return text
-    if text.startswith("6"):
-        return f"{text}.SH"
-    if text.startswith(("8", "4")):
-        return f"{text}.BJ"
-    return f"{text}.SZ"
+    return to_tushare_code(ticker)
 
 
 def _normalize_tushare_daily_bars(
@@ -168,6 +163,25 @@ def _normalize_tushare_cashflow_records(records: list[dict[str, Any]]) -> list[d
     return normalized
 
 
+def _normalize_tushare_shareholder_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for row in records or []:
+        report_date = row.get("end_date") or row.get("截止日期")
+        announcement_date = row.get("ann_date") or row.get("公告日期")
+        normalized.append(
+            {
+                **row,
+                "报告日": report_date,
+                "报告期": report_date,
+                "截止日期": report_date,
+                "公告日期": announcement_date,
+                "股东户数": safe_float(row.get("holder_num") or row.get("股东户数")),
+            }
+        )
+    normalized.sort(key=lambda row: (normalize_text(row.get("报告期")), normalize_text(row.get("公告日期"))))
+    return normalized
+
+
 def _normalize_tushare_revenue_breakdown(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for row in records or []:
@@ -253,6 +267,7 @@ def fetch_tushare_history_bundle(ticker: str, start_date: str, end_date: str) ->
     income_statement = query_income(ts_code=ts_code, start_date=query_start, end_date=query_end)
     balance_sheet = query_balancesheet(ts_code=ts_code, start_date=query_start, end_date=query_end)
     cashflow_statement = query_cashflow(ts_code=ts_code, start_date=query_start, end_date=query_end)
+    shareholder_count = query_stk_holdernumber(ts_code=ts_code, start_date=query_start, end_date=query_end)
     fina_indicator = query_fina_indicator(ts_code=ts_code, start_date=query_start, end_date=query_end)
     daily = query_daily(ts_code=ts_code, start_date=query_start, end_date=query_end)
     adj_factor = query_adj_factor(ts_code=ts_code, start_date=query_start, end_date=query_end)
@@ -277,6 +292,7 @@ def fetch_tushare_history_bundle(ticker: str, start_date: str, end_date: str) ->
         "income_statement": {"data": _normalize_tushare_income_records(income_statement.get("data", []) or [])},
         "balance_sheet": {"data": _normalize_tushare_balance_records(balance_sheet.get("data", []) or [])},
         "cashflow_statement": {"data": _normalize_tushare_cashflow_records(cashflow_statement.get("data", []) or [])},
+        "shareholder_count": {"data": _normalize_tushare_shareholder_records(shareholder_count.get("data", []) or [])},
         "fina_indicator": {"data": fina_indicator.get("data", []) or []},
         "daily_bars": bars_df,
         "daily_basic": basic_df,
@@ -296,6 +312,10 @@ def _build_scan_data_as_of(bundle: dict[str, Any], signal_date: pd.Timestamp) ->
     income_records = filter_records_as_of((bundle.get("income_statement") or {}).get("data", []) or [], signal_date)
     balance_records = filter_records_as_of((bundle.get("balance_sheet") or {}).get("data", []) or [], signal_date)
     cashflow_records = filter_records_as_of((bundle.get("cashflow_statement") or {}).get("data", []) or [], signal_date)
+    shareholder_records = filter_records_as_of(
+        (bundle.get("shareholder_count") or {}).get("data", []) or [],
+        signal_date,
+    )
     if not income_records or not balance_records:
         return None
 
@@ -319,6 +339,7 @@ def _build_scan_data_as_of(bundle: dict[str, Any], signal_date: pd.Timestamp) ->
         "income_statement": {"data": income_records},
         "balance_sheet": {"data": balance_records},
         "cashflow_statement": {"data": cashflow_records},
+        "shareholder_count": {"data": shareholder_records},
         "realtime_quote": {"data": quote_snapshot},
         "stock_kline": {"data": kline_snapshot},
         "valuation_history": {"data": valuation_snapshot},
@@ -400,11 +421,21 @@ def _build_signal_diagnostics(signals_month_end: pd.DataFrame) -> dict[str, Any]
     }
 
 
-def _flatten_axis_component_scores(axis: dict[str, Any] | None, prefix: str) -> dict[str, float | str | None]:
+def _flatten_axis_component_scores(axis: dict[str, Any] | None, prefix: str) -> dict[str, float | str | bool | None]:
     payload: dict[str, float | str | None] = {}
     components = (axis or {}).get("components", {}) or {}
     for name, component in components.items():
         payload[f"{prefix}_{name}_score"] = safe_float((component or {}).get("score"))
+        for key, value in (component or {}).items():
+            if key in {"score", "availability", "confidence", "reason", "inputs_used"}:
+                continue
+            if value is None or isinstance(value, (str, int, float, bool)):
+                payload[f"{prefix}_{name}_{key}"] = value
+    for name, weight in (((axis or {}).get("weights_used")) or {}).items():
+        payload[f"{prefix}_weight_{name}"] = safe_float(weight)
+    neutral_dropped = (axis or {}).get("neutral_dropped_components")
+    if neutral_dropped is not None:
+        payload[f"{prefix}_neutral_dropped_components"] = "; ".join(str(item) for item in neutral_dropped)
     return payload
 
 

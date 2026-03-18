@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-import json
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +15,7 @@ from adapters.akshare_adapter import (
     get_revenue_breakdown,
 )
 from adapters.baostock_adapter import get_all_a_share_stocks, get_daily_history
+from adapters.provider_router import load_scan_cache
 from engines.valuation_engine import build_three_case_valuation
 from utils.financial_snapshot import extract_market_cap
 from utils.value_utils import normalize_text, safe_float
@@ -111,7 +111,7 @@ def _statutory_available_date(report_date: pd.Timestamp) -> pd.Timestamp:
 
 def _record_available_date(row: dict[str, Any]) -> pd.Timestamp | None:
     report_date = None
-    for key in ("报告日", "报告期", "报告日期", "日期"):
+    for key in ("报告日", "报告期", "截止日期", "报告日期", "日期"):
         report_date = _parse_date(row.get(key))
         if report_date is not None:
             break
@@ -336,13 +336,7 @@ def _normalize_daily_bars(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
 
 def _load_local_cached_scan(ticker: str, repo_root: Path | None = None) -> dict[str, Any]:
     base = (repo_root or REPO_ROOT) / "data" / "raw" / str(ticker).upper()
-    path = base / "akshare_scan.json"
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    return load_scan_cache(base)
 
 
 def _prefer_live_or_cache(live_result: dict[str, Any], cached_scan: dict[str, Any], key: str) -> dict[str, Any]:

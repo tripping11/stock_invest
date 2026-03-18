@@ -1156,6 +1156,33 @@ class VCRFFlowEngineTests(unittest.TestCase):
         self.assertEqual(helper_state, "HARVEST")
         self.assertEqual(compatibility_state, "harvest")
 
+    def test_position_state_uses_current_attack_realization_threshold(self) -> None:
+        from utils.vcrf_state_utils import classify_vcrf_position_state
+
+        attack_state = classify_vcrf_position_state(
+            underwrite_score=82.0,
+            realization_score=65.0,
+            flow_stage="trend",
+            valuation_summary={
+                "floor_protection": 0.95,
+                "normalized_upside": 0.30,
+                "recognition_upside": 0.22,
+            },
+        )
+        ready_state = classify_vcrf_position_state(
+            underwrite_score=82.0,
+            realization_score=64.0,
+            flow_stage="trend",
+            valuation_summary={
+                "floor_protection": 0.95,
+                "normalized_upside": 0.30,
+                "recognition_upside": 0.22,
+            },
+        )
+
+        self.assertEqual(attack_state, "ATTACK")
+        self.assertEqual(ready_state, "READY")
+
     def test_position_state_uses_shared_crowded_flow_harvest_rule(self) -> None:
         from engines.flow_realization_engine import classify_position_state
         from utils.vcrf_state_utils import classify_vcrf_position_state
@@ -1939,6 +1966,20 @@ class VCRFDriverStackTests(unittest.TestCase):
         )
         self.assertEqual(driver_stack["market"], "US-share")
 
+    def test_driver_stack_marks_five_digit_numeric_ticker_as_hk_market(self) -> None:
+        from utils.primary_type_router import build_driver_stack
+
+        driver_stack = build_driver_stack(
+            "09899",
+            {
+                "company_profile": {"data": {"行业": "在线音乐服务", "主营业务": "在线音乐平台", "股票简称": "网易云音乐"}},
+                "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": "在线音乐服务", "主营收入": 90}]},
+                "realtime_quote": {"data": {"总市值": 31_000_000_000, "最新价": 140.0}},
+                "stock_kline": {"data": {"current_vs_5yr_high": 80.0}},
+            },
+        )
+        self.assertEqual(driver_stack["market"], "HK-share")
+
     def test_us_market_flow_confirmation_returns_explicit_placeholder(self) -> None:
         from engines.flow_realization_engine import score_flow_confirmation
 
@@ -1954,7 +1995,7 @@ class VCRFDriverStackTests(unittest.TestCase):
         )
         self.assertEqual(result["availability"], "missing")
         self.assertEqual(result["confidence"], "degraded")
-        self.assertEqual(result["reason"], "us_flow_confirmation_not_implemented")
+        self.assertEqual(result["reason"], "non_a_share_flow_confirmation_not_implemented")
 
 
 class VCRFSamplingTests(unittest.TestCase):

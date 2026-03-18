@@ -12,6 +12,7 @@ from utils.financial_snapshot import (
     get_latest_cashflow_snapshot,
     get_latest_income_snapshot,
 )
+from utils.market_utils import infer_market_from_stock_code
 from utils.vcrf_probes import detect_big_bath
 from utils.value_utils import normalize_text, safe_float
 
@@ -131,7 +132,7 @@ def _infer_gross_margin_trend(revenue_records: list[dict[str, Any]]) -> tuple[st
 
 
 def _infer_market(stock_code: str) -> str:
-    return "A-share" if str(stock_code).isdigit() and len(str(stock_code)) == 6 else "US-share"
+    return infer_market_from_stock_code(stock_code)
 
 
 def _derive_big_bath_features(scan_data: dict[str, Any]) -> dict[str, Any]:

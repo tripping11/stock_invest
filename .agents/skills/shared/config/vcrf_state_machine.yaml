@@ -6,10 +6,10 @@ state_thresholds:
   ready:
     min_underwrite: 70
     min_realization: 40
-    max_realization: 70
+    max_realization: 64.999
   attack:
     min_underwrite: 75
-    min_realization: 70
+    min_realization: 65
   harvest:
     recognition_upside_max: -0.05
     crowded_flow_stage: crowded

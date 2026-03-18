@@ -18,8 +18,7 @@ SKILLS_DIR = Path(__file__).resolve().parents[3]
 SHARED_DIR = SKILLS_DIR / "shared"
 sys.path.insert(0, str(SHARED_DIR))
 
-from adapters.akshare_adapter import RADAR_ALL_STEPS, RADAR_PARTIAL_STEPS, resolve_radar_trade_date, run_named_scan_steps  # noqa: E402
-from adapters.baostock_adapter import get_all_a_share_stocks  # noqa: E402
+from adapters.provider_router import RADAR_ALL_STEPS, RADAR_PARTIAL_STEPS, get_all_a_share_stocks, resolve_radar_trade_date, run_named_scan_steps  # noqa: E402
 from engines.report_engine import generate_market_scan_report  # noqa: E402
 from engines.valuation_engine import build_three_case_valuation  # noqa: E402
 from utils.framework_utils import determine_opportunity_type, normalize_text, safe_float  # noqa: E402
@@ -195,7 +194,7 @@ def _load_universe(scope: str, limit: int) -> list[dict[str, Any]]:
         if not code_col or not name_col:
             raise RuntimeError("unable to resolve universe columns from stock_zh_a_spot_em")
 
-        records: list[dict[str, Any]] = []
+        records = []
         for _, row in df.iterrows():
             name = normalize_text(row[name_col])
             special_tags = ["special_situation"] if "ST" in name.upper() else []
@@ -212,25 +211,31 @@ def _load_universe(scope: str, limit: int) -> list[dict[str, Any]]:
             )
         return _normalize_universe_records(records, limit)
     except Exception:
-        fallback = get_all_a_share_stocks()
-        records = []
-        for row in fallback.get("data", []):
-            name = normalize_text(row.get("name", ""))
-            records.append(
-                {
-                    "code": str(row.get("code", "")).split(".", 1)[0].zfill(6),
-                    "name": name,
-                    "market_cap": None,
-                    "float_market_cap": None,
-                    "turnover": None,
-                    "industry": "unknown",
-                    "special_tags": ["special_situation"] if "ST" in name.upper() else [],
-                }
-            )
-        if records:
-            normalized = _normalize_universe_records(records, limit)
-            return [{"code": item["code"], "name": item["name"]} for item in normalized]
-        raise
+        pass
+
+    provider_result = get_all_a_share_stocks()
+    records = []
+    for row in provider_result.get("data", []) or []:
+        name = normalize_text(row.get("name", ""))
+        records.append(
+            {
+                "code": str(row.get("code", "")).split(".", 1)[0].zfill(6),
+                "name": name,
+                "market_cap": safe_float(row.get("market_cap")),
+                "float_market_cap": safe_float(row.get("float_market_cap")),
+                "turnover": safe_float(row.get("turnover")),
+                "industry": normalize_text(row.get("industry")) or "unknown",
+                "special_tags": ["special_situation"] if "ST" in name.upper() else [],
+            }
+        )
+    if not records:
+        raise RuntimeError("unable to load A-share universe from any provider")
+
+    normalized = _normalize_universe_records(records, limit)
+    status = normalize_text(provider_result.get("status")).lower()
+    if "fallback_baostock" in status:
+        return [{"code": item["code"], "name": item["name"]} for item in normalized]
+    return normalized
 
 
 def _coarse_filter_universe(universe: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:

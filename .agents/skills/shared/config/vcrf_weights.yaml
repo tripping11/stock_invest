@@ -11,11 +11,11 @@ base_templates:
       business_or_asset_quality: 0.20
       normalized_earnings_power: 0.22
     realization:
-      repair_state: 0.10
-      regime_cycle_position: 0.10
-      marginal_buyer_probability: 0.15
-      flow_confirmation: 0.15
-      elasticity: 0.10
+      repair_state: 0.00
+      regime_cycle_position: 0.20
+      marginal_buyer_probability: 0.10
+      flow_confirmation: 0.25
+      elasticity: 0.05
       catalyst_quality: 0.40
   cyclical:
     underwrite:
@@ -25,12 +25,12 @@ base_templates:
       business_or_asset_quality: 0.20
       normalized_earnings_power: 0.25
     realization:
-      repair_state: 0.20
-      regime_cycle_position: 0.30
+      repair_state: 0.00
+      regime_cycle_position: 0.40
       marginal_buyer_probability: 0.05
-      flow_confirmation: 0.15
+      flow_confirmation: 0.30
       elasticity: 0.20
-      catalyst_quality: 0.10
+      catalyst_quality: 0.05
   turnaround:
     underwrite:
       intrinsic_value_floor: 0.18
@@ -39,11 +39,11 @@ base_templates:
       business_or_asset_quality: 0.10
       normalized_earnings_power: 0.20
     realization:
-      repair_state: 0.30
+      repair_state: 0.35
       regime_cycle_position: 0.10
-      marginal_buyer_probability: 0.10
-      flow_confirmation: 0.15
-      elasticity: 0.10
+      marginal_buyer_probability: 0.05
+      flow_confirmation: 0.20
+      elasticity: 0.05
       catalyst_quality: 0.25
   asset_play:
     underwrite:

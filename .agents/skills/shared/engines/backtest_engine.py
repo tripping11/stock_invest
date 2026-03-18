@@ -171,6 +171,7 @@ def _run_one_round(
     round_size = int(protocol.get("round_size", 3))
     lot_size = int(protocol.get("lot_size", 100))
     max_holding_bars = int(protocol.get("max_holding_bars", 504))
+    max_loss_pct = float(protocol.get("max_loss_pct", 0.0) or 0.0)
     same_bar_conflict = str(protocol.get("same_bar_conflict", "stop_first")).lower()
     cost_cfg = protocol.get("costs", {}) or {}
 
@@ -270,14 +271,30 @@ def _run_one_round(
                 continue
             floor_price = position.floor_price
             recognition_price = position.recognition_price
-            hit_floor = floor_price is not None and float(bar["low"]) <= floor_price
+            # A valuation floor above the entry price is an underwrite cushion, not a stop-loss trigger.
+            hit_floor = floor_price is not None and floor_price < position.entry_price and float(bar["low"]) <= floor_price
+            max_loss_price = position.entry_price * (1 - max_loss_pct) if max_loss_pct > 0 else None
+            hit_max_loss = max_loss_price is not None and max_loss_price < position.entry_price and float(bar["low"]) <= max_loss_price
             hit_target = recognition_price is not None and float(bar["high"]) >= recognition_price
-            if hit_floor and hit_target:
-                raw_exit_price = floor_price if same_bar_conflict == "stop_first" else recognition_price
-                exit_reason = "floor_stop" if same_bar_conflict == "stop_first" else "target_hit"
-            elif hit_floor:
-                raw_exit_price = floor_price
-                exit_reason = "floor_stop"
+
+            stop_candidates: list[tuple[str, float]] = []
+            if hit_floor and floor_price is not None:
+                stop_candidates.append(("floor_stop", float(floor_price)))
+            if hit_max_loss and max_loss_price is not None:
+                stop_candidates.append(("max_loss_stop", float(max_loss_price)))
+
+            if stop_candidates:
+                # Among multiple stop thresholds on the same bar, the higher price triggers first on the way down.
+                stop_reason, stop_price = max(stop_candidates, key=lambda item: item[1])
+            else:
+                stop_reason, stop_price = None, None
+
+            if stop_price is not None and hit_target:
+                raw_exit_price = stop_price if same_bar_conflict == "stop_first" else recognition_price
+                exit_reason = stop_reason if same_bar_conflict == "stop_first" else "target_hit"
+            elif stop_price is not None:
+                raw_exit_price = stop_price
+                exit_reason = str(stop_reason)
             elif hit_target:
                 raw_exit_price = recognition_price
                 exit_reason = "target_hit"
@@ -341,6 +358,23 @@ def _run_one_round(
     win_rate = None
     if not trades.empty:
         win_rate = float((trades["net_pnl"] > 0).mean())
+    candidate_diagnostics = candidates[
+        [
+            column
+            for column in (
+                "ticker",
+                "underwrite_score",
+                "realization_score",
+                "floor_price",
+                "recognition_price",
+                "vcrf_state",
+                "position_state",
+                "primary_type",
+                "flow_stage",
+            )
+            if column in candidates.columns
+        ]
+    ].to_dict(orient="records")
     summary = {
         "round_id": round_id,
         "tickers": candidates["ticker"].tolist(),
@@ -352,6 +386,9 @@ def _run_one_round(
         "used_cash_ratio": peak_deployed / initial_cash if initial_cash else 0.0,
         "target_hit_rate": float((trades["exit_reason"] == "target_hit").mean()) if not trades.empty else None,
         "floor_stop_rate": float((trades["exit_reason"] == "floor_stop").mean()) if not trades.empty else None,
+        "max_loss_stop_rate": float((trades["exit_reason"] == "max_loss_stop").mean()) if not trades.empty else None,
+        "exit_reason_counts": trades["exit_reason"].value_counts().to_dict() if not trades.empty else {},
+        "candidate_diagnostics": candidate_diagnostics,
         "anomalies": anomalies,
     }
     return {"round_id": round_id, "summary": summary, "trades": trades, "equity": equity}

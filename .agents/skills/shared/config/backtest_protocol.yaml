@@ -6,6 +6,7 @@ lot_size: 100
 signal_frequency: month_end
 signal_effective_timing: next_trading_day_open
 max_holding_bars: 504
+max_loss_pct: 0.20
 allow_reentry_within_round: false
 same_bar_conflict: stop_first
 costs:
