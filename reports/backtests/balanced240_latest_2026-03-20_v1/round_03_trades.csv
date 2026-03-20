@@ -1,0 +1,9 @@
+ticker,entry_date,exit_date,entry_price,exit_price,shares,primary_type,sector_route,industry_group,sleeve,slot_in_round,hold_bars,hold_days,days_to_target,exit_reason,gross_return,net_pnl,annualized_return,mfe_pct,mae_pct
+601916,2020-08-03,2021-10-27,3.2849,2.8892,152200,compounder,financial_asset,banks,quality,2,299,451,,max_loss_stop,-0.12044,-60945.97,-0.09865025344009293,0.057442,-0.123033
+000627,2021-12-01,2022-04-27,2.9885,2.6286,167300,compounder,financial_asset,insurers,quality,2,98,148,,max_loss_stop,-0.12044,-60947.91,-0.27130364055665135,0.157997,-0.129885
+000635,2022-05-05,2022-05-31,7.5037,11.3843,66600,turnaround,financial_asset,developers,value_repair,1,19,27,27.0,target_hit,0.517149,257296.81,279.04809110809265,0.627186,-0.008496
+000926,2022-06-01,2022-08-02,3.4246,3.0122,146000,compounder,financial_asset,developers,quality,2,44,63,,max_loss_stop,-0.12044,-60950.68,-0.5245623183463988,0.011891,-0.140925
+000001,2022-09-01,2022-10-21,11.2848,9.9256,44300,compounder,financial_asset,banks,quality,2,31,51,,max_loss_stop,-0.12044,-60940.76,-0.6008688504225683,0.035056,-0.125339
+600637,2023-01-03,2023-04-03,6.349,7.7447,78700,compounder,financial_asset,developers,quality,2,60,91,,state_reject,0.219832,108889.5,1.2189561005604328,0.295593,-0.021542
+600016,2023-06-01,2024-12-31,3.4022,4.1279,146900,compounder,financial_asset,banks,quality,2,387,580,,end_of_data,0.213306,105961.47,0.12938886534808147,0.278577,-0.076665
+000042,2024-11-01,2024-12-31,5.2726,4.4678,94800,turnaround,financial_asset,developers,value_repair,1,44,61,,end_of_data,-0.15265,-76799.7,-0.6288452851696328,0.132261,-0.154123

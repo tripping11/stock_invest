@@ -81,6 +81,81 @@ def resolve_sector_route(stock_code: str, profile: dict[str, Any], revenue_recor
     }
 
 
+def _industry_group_fallback(sector_route: str) -> tuple[str, bool]:
+    route = normalize_text(sector_route).lower()
+    fallback = {
+        "core_resource": ("core_resource", True),
+        "rigid_shovel": ("rigid_shovel", True),
+        "core_military": ("military", False),
+        "financial_asset": ("financial_asset", False),
+        "consumer": ("consumer", False),
+        "tech": ("tech", False),
+    }
+    return fallback.get(route, ("unknown", False))
+
+
+def resolve_industry_group(
+    stock_code: str,
+    profile: dict[str, Any],
+    revenue_records: list[dict[str, Any]],
+    *,
+    sector_route: str = "",
+) -> dict[str, Any]:
+    mapping = load_sector_classification()
+    override = (mapping.get("company_overrides", {}) or {}).get(str(stock_code), {}) or {}
+    if override.get("industry_group"):
+        return {
+            "industry_group": normalize_text(override.get("industry_group")).lower(),
+            "matched_terms": [normalize_text(override.get("name"))] if override.get("name") else [],
+            "cycle_sensitive": bool(override.get("cycle_sensitive", False)),
+            "confidence": 1.0,
+            "reason": "company override",
+        }
+
+    preferred_route = normalize_text(sector_route).lower()
+    combined = " ".join(_combined_texts(profile, revenue_records))
+    best_group = "unknown"
+    best_hits: list[str] = []
+    best_route_default = ""
+    for group, cfg in (mapping.get("industry_groups", {}) or {}).items():
+        hits = [keyword for keyword in cfg.get("keywords", []) if keyword and keyword in combined]
+        route_default = normalize_text(cfg.get("route_default")).lower()
+        if len(hits) > len(best_hits):
+            best_group = group
+            best_hits = hits
+            best_route_default = route_default
+        elif hits and len(hits) == len(best_hits):
+            if preferred_route and route_default == preferred_route and best_route_default != preferred_route:
+                best_group = group
+                best_hits = hits
+                best_route_default = route_default
+
+    if not best_hits:
+        fallback_group, fallback_cycle_sensitive = _industry_group_fallback(preferred_route)
+        return {
+            "industry_group": fallback_group,
+            "matched_terms": [],
+            "cycle_sensitive": fallback_cycle_sensitive,
+            "confidence": 0.2 if fallback_group != "unknown" else 0.0,
+            "reason": "route fallback" if fallback_group != "unknown" else "no industry keywords matched",
+        }
+
+    confidence = 0.2
+    if len(best_hits) >= 2:
+        confidence = 0.95
+    elif len(best_hits) == 1:
+        confidence = 0.70
+
+    best_cfg = ((mapping.get("industry_groups", {}) or {}).get(best_group, {}) or {})
+    return {
+        "industry_group": best_group,
+        "matched_terms": best_hits,
+        "cycle_sensitive": bool(best_cfg.get("cycle_sensitive", False)),
+        "confidence": confidence,
+        "reason": "keyword grouping",
+    }
+
+
 def _normalize_margin(value: float | None) -> float | None:
     if value is None:
         return None
@@ -362,6 +437,12 @@ def build_driver_stack(stock_code: str, scan_data: dict[str, Any], *, extra_text
     profile = scan_data.get("company_profile", {}).get("data", {}) or {}
     revenue_records = scan_data.get("revenue_breakdown", {}).get("data", []) or []
     route_result = resolve_sector_route(stock_code, profile, revenue_records)
+    industry_group_result = resolve_industry_group(
+        stock_code,
+        profile,
+        revenue_records,
+        sector_route=route_result["sector_route"],
+    )
     asset_play_hint = _has_asset_play_hint(profile, revenue_records, extra_texts=extra_texts)
     financials_3y = _infer_losses_and_repair(
         scan_data,
@@ -404,6 +485,8 @@ def build_driver_stack(stock_code: str, scan_data: dict[str, Any], *, extra_text
     return {
         "market": _infer_market(stock_code),
         "sector_route": route_result["sector_route"],
+        "industry_group": industry_group_result["industry_group"],
+        "sector_cycle_sensitive": industry_group_result["cycle_sensitive"],
         "primary_type": primary_type,
         "primary_type_confidence": confidence,
         "modifiers": modifiers,

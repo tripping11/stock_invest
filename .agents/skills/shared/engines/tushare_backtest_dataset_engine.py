@@ -499,6 +499,8 @@ def build_tushare_backtest_inputs(
                     "position_state": normalize_text(gate_result.get("position_state")).lower(),
                     "primary_type": normalize_text((gate_result.get("driver_stack") or {}).get("primary_type")).lower(),
                     "sector_route": normalize_text((gate_result.get("driver_stack") or {}).get("sector_route")).lower(),
+                    "industry_group": normalize_text((gate_result.get("driver_stack") or {}).get("industry_group")).lower(),
+                    "sector_cycle_sensitive": bool((gate_result.get("driver_stack") or {}).get("sector_cycle_sensitive", False)),
                     "flow_stage": normalize_text((gate_result.get("realization_axis") or {}).get("flow_stage")).lower(),
                     "announcement_date": signal_date.normalize(),
                     "reject_reason": "; ".join(gate_result.get("hard_vetos", []) or []),

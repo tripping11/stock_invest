@@ -1,0 +1,2 @@
+ticker,entry_date,exit_date,entry_price,exit_price,shares,primary_type,sector_route,sleeve,slot_in_round,hold_bars,hold_days,days_to_target,exit_reason,gross_return,net_pnl,annualized_return,mfe_pct,mae_pct
+600036,2022-11-01,2022-12-01,24.2335,32.0706,41200,compounder,financial_asset,quality,1,23,31,,state_reject,0.323399,320847.99,26.090172858964024,0.34619,-0.003819

@@ -7,8 +7,24 @@ signal_frequency: month_end
 signal_effective_timing: next_trading_day_open
 max_holding_bars: 504
 max_loss_pct: 0.20
+max_loss_pct_by_type:
+  compounder: 0.12
+  cyclical: 0.18
+  turnaround: null
+  asset_play: null
+  special_situation: 0.18
 allow_reentry_within_round: false
+allow_refill_from_waitlist: true
+dynamic_target_refresh_min_state: READY
 same_bar_conflict: stop_first
+sector_overlay:
+  enabled: true
+  favored_only_for_cycle_sensitive: true
+  allow_idiosyncratic_override: true
+  min_sector_members_for_gate: 3
+  sector_score_weight: 0.20
+  max_positions_per_industry_group: 1
+  max_positions_per_sector_route: 2
 costs:
   broker_commission_bps: 3.0
   broker_min_commission: 5.0

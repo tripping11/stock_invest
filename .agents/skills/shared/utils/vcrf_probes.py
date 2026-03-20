@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from utils.config_loader import resolve_vcrf_weight_template
+from utils.config_loader import load_valuation_discipline, resolve_vcrf_weight_template
 from utils.financial_snapshot import (
     extract_cash_and_equivalents,
     extract_trading_financial_assets,
@@ -15,6 +15,13 @@ from utils.financial_snapshot import (
     get_latest_income_snapshot,
 )
 from utils.opportunity_classifier import assess_business_purity, assess_moat_quality
+from utils.valuation_case_config import (
+    DEFAULT_FLOOR_PROTECTION_SCORE_BANDS,
+    DEFAULT_NORMALIZED_VALUE_RATIO_BANDS,
+    resolve_case_equity_value,
+    resolve_route_case_overrides,
+    resolve_score_bands,
+)
 from utils.value_utils import clamp, normalize_text, safe_float
 
 
@@ -60,6 +67,7 @@ def _component_payload(
 
 
 def assess_intrinsic_value_floor(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
+    discipline = load_valuation_discipline()
     quote = scan_data.get("realtime_quote", {}).get("data", {})
     kline = scan_data.get("stock_kline", {}).get("data", {})
     current_price = extract_latest_price(quote, kline)
@@ -70,24 +78,17 @@ def assess_intrinsic_value_floor(scan_data: dict[str, Any], driver_stack: dict[s
 
     floor_price: float | None = None
     anchor = "unknown"
-    if share_count not in (None, 0) and equity is not None:
-        if route in {"core_resource", "rigid_shovel"}:
-            anchor = "stressed_book"
-            floor_price = equity * 0.85 / share_count
-        elif route == "financial_asset":
-            anchor = "stressed_nav"
-            floor_price = equity * 0.90 / share_count
-        elif route in {"consumer", "tech"} and profit is not None:
-            anchor = "no_growth_owner_earnings"
-            floor_price = profit * 8 / share_count
-        else:
-            anchor = "conservative_book"
-            floor_price = equity * 0.75 / share_count
+    if share_count not in (None, 0):
+        case_cfg = resolve_route_case_overrides(discipline, route).get("floor", {})
+        anchor = normalize_text(case_cfg.get("valuation_method")) or "unknown"
+        floor_equity_value = resolve_case_equity_value(case_cfg, equity=equity, profit=profit)
+        if floor_equity_value is not None:
+            floor_price = floor_equity_value / share_count
 
     floor_protection = floor_price / current_price if floor_price not in (None, 0) and current_price not in (None, 0) else None
     score = _banded_score(
         floor_protection,
-        [(0.60, 20), (0.75, 45), (0.85, 65), (1.00, 85), (1.20, 100)],
+        resolve_score_bands(discipline, "floor_protection", DEFAULT_FLOOR_PROTECTION_SCORE_BANDS),
     )
     availability = "full" if floor_protection is not None else "missing"
     confidence = "full" if floor_protection is not None else "degraded"
@@ -296,6 +297,7 @@ def assess_business_or_asset_quality(scan_data: dict[str, Any], driver_stack: di
 
 
 def assess_normalized_earnings_power(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
+    discipline = load_valuation_discipline()
     route = normalize_text(driver_stack.get("sector_route")).lower()
     quote = scan_data.get("realtime_quote", {}).get("data", {})
     kline = scan_data.get("stock_kline", {}).get("data", {})
@@ -304,30 +306,22 @@ def assess_normalized_earnings_power(scan_data: dict[str, Any], driver_stack: di
     equity = get_latest_balance_snapshot(scan_data.get("balance_sheet", {}).get("data", [])).get("total_equity")
     profit = get_latest_income_snapshot(scan_data.get("income_statement", {}).get("data", [])).get("net_profit")
 
-    normalized_equity_value: float | None = None
-    anchor = "missing"
-    if route == "core_resource":
-        anchor = "core_resource_mid_cycle"
-        normalized_equity_value = (profit * 9) if profit is not None else (equity * 1.0 if equity is not None else None)
-    elif route == "rigid_shovel":
-        anchor = "rigid_shovel_capex_mid_cycle"
-        normalized_equity_value = (profit * 10) if profit is not None else (equity * 1.05 if equity is not None else None)
-    elif route == "core_military":
-        anchor = "core_military_margin_anchor"
-        normalized_equity_value = (profit * 16) if profit is not None else (equity * 1.2 if equity is not None else None)
-    elif route in {"consumer", "tech"}:
-        anchor = "owner_earnings_anchor"
-        normalized_equity_value = (profit * 15) if profit is not None else (equity * 1.3 if equity is not None else None)
-    elif route == "financial_asset":
-        anchor = "mid_cycle_roe_anchor"
-        normalized_equity_value = equity * 1.1 if equity is not None else None
-    else:
-        anchor = "conservative_fallback"
-        normalized_equity_value = (profit * 8) if profit is not None else (equity * 0.9 if equity is not None else None)
+    route_cfg = resolve_route_case_overrides(discipline, route)
+    normalized_cfg = route_cfg.get("normalized", {})
+    normalized_equity_value = resolve_case_equity_value(normalized_cfg, equity=equity, profit=profit)
+    route_methods = discipline.get("route_methods", {}) or {}
+    anchor = normalize_text(
+        (route_methods.get(route, {}) or {}).get("normalized_anchor")
+        or normalized_cfg.get("anchor")
+        or "conservative_fallback"
+    )
 
     implied_price = normalized_equity_value / share_count if normalized_equity_value not in (None, 0) and share_count not in (None, 0) else None
     value_ratio = implied_price / current_price if implied_price not in (None, 0) and current_price not in (None, 0) else None
-    score = _banded_score(value_ratio, [(0.80, 30), (1.00, 50), (1.20, 65), (1.50, 85), (2.00, 100)])
+    score = _banded_score(
+        value_ratio,
+        resolve_score_bands(discipline, "normalized_value_ratio", DEFAULT_NORMALIZED_VALUE_RATIO_BANDS),
+    )
     availability = "full" if implied_price is not None else "missing"
     confidence = "partial" if implied_price is not None else "degraded"
     return _component_payload(

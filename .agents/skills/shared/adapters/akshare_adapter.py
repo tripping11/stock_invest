@@ -170,6 +170,25 @@ def _is_ok_status(status: Any) -> bool:
     return str(status or "").lower().startswith("ok")
 
 
+def _with_source_meta(result: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(result or {})
+    evidence = dict(normalized.get("evidence") or {})
+    status_text = str(normalized.get("status", "") or "")
+    source_meta = dict(normalized.get("_source_meta") or {})
+    source_meta.setdefault("source_type", evidence.get("source_type", "unknown"))
+    source_meta.setdefault("source_desc", evidence.get("description", ""))
+    source_meta.setdefault("source_url", evidence.get("source_url", ""))
+    source_meta.setdefault("source_tier", evidence.get("source_tier"))
+    source_meta.setdefault("confidence", evidence.get("confidence"))
+    source_meta.setdefault("fetch_time", normalized.get("fetch_timestamp") or evidence.get("fetch_time"))
+    source_meta.setdefault("status", status_text)
+    status_lower = status_text.lower()
+    source_meta["used_cache"] = bool(source_meta.get("used_cache")) or ("cache" in status_lower)
+    source_meta["used_fallback"] = bool(source_meta.get("used_fallback")) or ("fallback" in status_lower)
+    normalized["_source_meta"] = source_meta
+    return normalized
+
+
 def _extract_latest_share_capital(stock_code: str) -> float | None:
     balance_result = get_balance_sheet(stock_code)
     if not _is_ok_status(balance_result.get("status")):
@@ -783,7 +802,12 @@ def _day_cache_scan_result(cached: dict[str, Any]) -> dict[str, Any]:
     suffix = f"[day_cache: original_status={original_status or 'unknown'}, original_fetch={result['original_fetch_time']}]"
     evidence["description"] = f"{description} {suffix}".strip()
     result["evidence"] = evidence
-    return result
+    meta = dict(result.get("_source_meta") or {})
+    meta["used_cache"] = True
+    meta["cache_kind"] = "day_cache"
+    meta.setdefault("original_status", original_status or "unknown")
+    result["_source_meta"] = meta
+    return _with_source_meta(result)
 
 
 def _write_radar_day_cache_fields(day_cache_dir: Path, stock_code: str, updates: dict[str, Any]) -> None:
@@ -853,7 +877,11 @@ def _cached_scan_result(
     result["evidence"] = evidence
     result["original_fetch_time"] = original_fetch
     result["cache_age_hours"] = round(cache_age_hours, 1)
-    return result
+    meta = dict(result.get("_source_meta") or {})
+    meta["used_cache"] = True
+    meta["cache_kind"] = "fresh_cache" if cache_is_fresh else "stale_cache"
+    result["_source_meta"] = meta
+    return _with_source_meta(result)
 
 
 def _resolve_scan_step(
@@ -869,13 +897,13 @@ def _resolve_scan_step(
 
     result = fetcher(stock_code)
     if _is_ok_status(result.get("status")):
-        return result
+        return _with_source_meta(result)
 
     for delay in retry_delays:
         time.sleep(delay)
         retry_result = fetcher(stock_code)
         if _is_ok_status(retry_result.get("status")):
-            return retry_result
+            return _with_source_meta(retry_result)
 
     cached = _cached_scan_result(
         cached_results,
@@ -883,7 +911,9 @@ def _resolve_scan_step(
         cache_is_fresh=cache_is_fresh,
         cache_age_hours=cache_age_hours,
     )
-    return cached or result
+    if cached:
+        return _with_source_meta(cached)
+    return _with_source_meta(result)
 
 
 def run_named_scan_steps(
@@ -899,7 +929,7 @@ def run_named_scan_steps(
     for step_name, fetcher in step_map.items():
         cached_step = (cached_results or {}).get(step_name, {})
         if _is_ok_status(cached_step.get("status")):
-            results[step_name] = cached_step
+            results[step_name] = _with_source_meta(cached_step)
             continue
 
         day_cached = day_cache_fields.get(step_name, {})

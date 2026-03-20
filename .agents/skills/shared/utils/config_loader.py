@@ -1,6 +1,7 @@
 """YAML configuration loaders for the investment framework."""
 from __future__ import annotations
 
+from functools import lru_cache
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -12,10 +13,15 @@ SHARED_DIR = Path(__file__).resolve().parents[1]
 CONFIG_DIR = SHARED_DIR / "config"
 
 
-def load_yaml_config(filename: str) -> dict[str, Any]:
+@lru_cache(maxsize=None)
+def _load_yaml_config_cached(filename: str) -> dict[str, Any]:
     path = CONFIG_DIR / filename
-    with open(path, "r", encoding="utf-8") as handle:
+    with path.open("r", encoding="utf-8") as handle:
         return yaml.safe_load(handle) or {}
+
+
+def load_yaml_config(filename: str) -> dict[str, Any]:
+    return deepcopy(_load_yaml_config_cached(filename))
 
 
 def load_scoring_rules() -> dict[str, Any]:

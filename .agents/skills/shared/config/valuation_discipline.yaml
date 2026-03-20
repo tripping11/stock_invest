@@ -139,3 +139,144 @@ route_methods:
     normalized_anchor: financial_asset_mid_cycle_roe
   unknown:
     normalized_anchor: conservative_fallback
+
+route_case_overrides:
+  default:
+    floor:
+      valuation_method: conservative_book
+      assumption: book-value fallback
+      preferred_anchor: equity
+      equity_multiple: 0.75
+      profit_multiple: 8
+    normalized:
+      assumption: conservative normalized earnings
+      preferred_anchor: profit
+      profit_multiple: 8
+      equity_multiple: 0.90
+    recognition:
+      valuation_method: recognition_multiple
+      assumption: sentiment-driven upside
+      preferred_anchor: normalized
+      normalized_multiple: 1.25
+      profit_multiple:
+  core_resource:
+    floor:
+      valuation_method: stressed_book
+      assumption: commodity stress persists
+      preferred_anchor: equity
+      equity_multiple: 0.85
+    normalized:
+      assumption: mid-cycle resource earnings
+      preferred_anchor: profit
+      profit_multiple: 9
+      equity_multiple: 1.00
+    recognition:
+      valuation_method: peak_cycle_multiple
+      assumption: pricing and sentiment overshoot
+      preferred_anchor: profit
+      profit_multiple: 12
+      normalized_multiple: 1.25
+  rigid_shovel:
+    floor:
+      valuation_method: replacement_cost_proxy
+      assumption: capex remains soft
+      preferred_anchor: equity
+      equity_multiple: 0.80
+    normalized:
+      assumption: mid-cycle capex demand
+      preferred_anchor: profit
+      profit_multiple: 10
+      equity_multiple: 1.05
+    recognition:
+      valuation_method: peak_capex_multiple
+      assumption: order boom and rerating
+      preferred_anchor: profit
+      profit_multiple: 13
+      normalized_multiple: 1.25
+  core_military:
+    normalized:
+      assumption: program margins normalize
+      preferred_anchor: profit
+      profit_multiple: 16
+      equity_multiple: 1.20
+    recognition:
+      valuation_method: recognition_multiple
+      assumption: program certainty premium
+      preferred_anchor: profit
+      profit_multiple: 20
+      normalized_multiple: 1.35
+  consumer:
+    floor:
+      valuation_method: no_growth_owner_earnings
+      assumption: no-growth downside anchor
+      preferred_anchor: profit
+      profit_multiple: 8
+      equity_multiple: 0.75
+    normalized:
+      assumption: owner earnings normalize
+      preferred_anchor: profit
+      profit_multiple: 15
+      equity_multiple: 1.30
+    recognition:
+      valuation_method: recognition_multiple
+      assumption: quality rerating and momentum
+      preferred_anchor: normalized
+      normalized_multiple: 1.35
+      profit_multiple: 20
+  tech:
+    floor:
+      valuation_method: no_growth_owner_earnings
+      assumption: no-growth downside anchor
+      preferred_anchor: profit
+      profit_multiple: 8
+      equity_multiple: 0.75
+    normalized:
+      assumption: demand and mix normalize
+      preferred_anchor: profit
+      profit_multiple: 18
+      equity_multiple: 1.40
+    recognition:
+      valuation_method: recognition_multiple
+      assumption: quality rerating and momentum
+      preferred_anchor: normalized
+      normalized_multiple: 1.35
+      profit_multiple: 20
+  financial_asset:
+    floor:
+      valuation_method: stressed_nav
+      assumption: asset discount persists
+      preferred_anchor: equity
+      equity_multiple: 0.90
+    normalized:
+      assumption: mid-cycle ROE on current equity
+      preferred_anchor: equity
+      equity_multiple: 1.10
+    recognition:
+      valuation_method: recognition_multiple
+      assumption: discount closes
+      preferred_anchor: normalized
+      normalized_multiple: 1.20
+
+score_bands:
+  floor_protection:
+    - threshold: 0.60
+      score: 20
+    - threshold: 0.75
+      score: 45
+    - threshold: 0.85
+      score: 65
+    - threshold: 1.00
+      score: 85
+    - threshold: 1.20
+      score: 100
+  normalized_value_ratio:
+    - threshold: 0.80
+      score: 30
+    - threshold: 1.00
+      score: 50
+    - threshold: 1.20
+      score: 65
+    - threshold: 1.50
+      score: 85
+    - threshold: 2.00
+      score: 100

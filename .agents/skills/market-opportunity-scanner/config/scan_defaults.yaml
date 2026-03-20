@@ -5,9 +5,16 @@ defaults:
   secondary_score_cutoff: 65
   radar_day_cache_enabled: true
   radar_max_workers: 4
+  radar_future_timeout_seconds: 120
   radar_retry_delays:
     - 0.5
     - 1.0
+  sector_budget:
+    enabled: true
+    min_group_members: 2
+    favored_share: 0.70
+    neutral_share: 0.20
+    override_share: 0.10
   layered_sampling:
     buckets:
       - name: large

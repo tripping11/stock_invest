@@ -5,9 +5,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from utils.config_loader import load_scoring_rules, load_vcrf_state_machine, resolve_vcrf_weight_template
-from utils.financial_snapshot import extract_float_market_cap, extract_latest_price, extract_market_cap
+from utils.financial_snapshot import (
+    extract_float_market_cap,
+    extract_latest_price,
+    extract_market_cap,
+)
 from utils.vcrf_state_utils import classify_vcrf_position_state
-from utils.value_utils import clamp, normalize_text, safe_float
+from utils.value_utils import clamp, extract_first_value, normalize_text, safe_float
 
 
 FLOW_STAGE_ORDER = {
@@ -330,6 +334,131 @@ def _flow_level1_score(kline: dict[str, Any]) -> tuple[float, float, float, floa
     return level1_score, volume_ratio_score, drawdown_rebound_score, turnover_expansion_score
 
 
+def _sorted_statement_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _date_key(row: dict[str, Any]) -> str:
+        for key in ("报告日期", "报告期", "日期", "报告日"):
+            text = normalize_text(row.get(key)).replace("-", "").replace("/", "")
+            digits = "".join(ch for ch in text if ch.isdigit())
+            if len(digits) >= 6:
+                return digits
+        return ""
+
+    valid = [row for row in (records or []) if isinstance(row, dict)]
+    return sorted(valid, key=_date_key, reverse=True)
+
+
+def _extract_revenue(row: dict[str, Any]) -> float | None:
+    return safe_float(
+        extract_first_value(
+            row,
+            (
+                "营业总收入",
+                "营业总收入(元)",
+                "营业收入",
+                "营业收入(元)",
+                "主营业务收入",
+            ),
+        )
+    )
+
+
+def _extract_net_profit(row: dict[str, Any]) -> float | None:
+    return safe_float(
+        extract_first_value(
+            row,
+            (
+                "归属于母公司所有者的净利润",
+                "归属于母公司股东的净利润",
+                "净利润",
+            ),
+        )
+    )
+
+
+def _extract_operating_cashflow(row: dict[str, Any]) -> float | None:
+    return safe_float(
+        extract_first_value(
+            row,
+            (
+                "经营活动产生的现金流量净额",
+                "经营活动产生的现金流量净额（元）",
+                "经营现金流量净额",
+                "经营活动现金流量净额",
+            ),
+        )
+    )
+
+
+def _extract_total_assets(row: dict[str, Any]) -> float | None:
+    return safe_float(extract_first_value(row, ("资产总计", "总资产")))
+
+
+def _margin(numerator: float | None, denominator: float | None) -> float | None:
+    if numerator is None or denominator in (None, 0):
+        return None
+    return numerator / denominator
+
+
+def _ratio_change(current: float | None, previous: float | None) -> float | None:
+    if current is None or previous in (None, 0):
+        return None
+    return current / previous - 1
+
+
+def _score_fundamental_momentum(scan_data: dict[str, Any]) -> tuple[float, dict[str, Any]]:
+    income_rows = _sorted_statement_rows(scan_data.get("income_statement", {}).get("data", []) or [])
+    cashflow_rows = _sorted_statement_rows(scan_data.get("cashflow_statement", {}).get("data", []) or [])
+    balance_rows = _sorted_statement_rows(scan_data.get("balance_sheet", {}).get("data", []) or [])
+
+    latest_income = income_rows[0] if len(income_rows) >= 1 else {}
+    previous_income = income_rows[1] if len(income_rows) >= 2 else {}
+    latest_cashflow = cashflow_rows[0] if len(cashflow_rows) >= 1 else {}
+    previous_cashflow = cashflow_rows[1] if len(cashflow_rows) >= 2 else {}
+    latest_balance = balance_rows[0] if len(balance_rows) >= 1 else {}
+    previous_balance = balance_rows[1] if len(balance_rows) >= 2 else {}
+
+    latest_profit = _extract_net_profit(latest_income)
+    previous_profit = _extract_net_profit(previous_income)
+    latest_revenue = _extract_revenue(latest_income)
+    previous_revenue = _extract_revenue(previous_income)
+    latest_cfo = _extract_operating_cashflow(latest_cashflow)
+    previous_cfo = _extract_operating_cashflow(previous_cashflow)
+    latest_assets = _extract_total_assets(latest_balance)
+    previous_assets = _extract_total_assets(previous_balance)
+
+    latest_profit_margin = _margin(latest_profit, latest_revenue)
+    previous_profit_margin = _margin(previous_profit, previous_revenue)
+    latest_cfo_margin = _margin(latest_cfo, latest_revenue)
+    previous_cfo_margin = _margin(previous_cfo, previous_revenue)
+    latest_roa = _margin(latest_profit, latest_assets)
+    previous_roa = _margin(previous_profit, previous_assets)
+
+    score = 0.0
+    if latest_profit is not None and latest_profit > 0:
+        score += 10.0
+    if latest_cfo is not None and latest_cfo > 0:
+        score += 10.0
+    if latest_profit is not None and previous_profit is not None and latest_profit > previous_profit:
+        score += 20.0
+    if latest_cfo is not None and previous_cfo is not None and latest_cfo > previous_cfo:
+        score += 20.0
+    if latest_profit_margin is not None and previous_profit_margin is not None and latest_profit_margin > previous_profit_margin:
+        score += 15.0
+    if latest_cfo_margin is not None and previous_cfo_margin is not None and latest_cfo_margin > previous_cfo_margin:
+        score += 15.0
+    if latest_roa is not None and previous_roa is not None and latest_roa > previous_roa:
+        score += 10.0
+
+    details = {
+        "profit_change_pct": _ratio_change(latest_profit, previous_profit),
+        "cfo_change_pct": _ratio_change(latest_cfo, previous_cfo),
+        "profit_margin_delta": None if latest_profit_margin is None or previous_profit_margin is None else latest_profit_margin - previous_profit_margin,
+        "cfo_margin_delta": None if latest_cfo_margin is None or previous_cfo_margin is None else latest_cfo_margin - previous_cfo_margin,
+        "roa_delta": None if latest_roa is None or previous_roa is None else latest_roa - previous_roa,
+    }
+    return clamp(score, 0.0, 100.0), details
+
+
 def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, Any]) -> dict[str, Any]:
     market = normalize_text(driver_stack.get("market") or "A-share")
     if market != "A-share":
@@ -345,27 +474,59 @@ def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, A
     kline = scan_data.get("stock_kline", {}).get("data", {})
     level1_score, volume_ratio_score, drawdown_rebound_score, turnover_expansion_score = _flow_level1_score(kline)
     event_signals = scan_data.get("event_signals", {}) or {}
-    pulse_events_30d = int(safe_float(kline.get("pulse_volume_events_30d")) or 0)
     drawdown = safe_float(kline.get("drawdown_from_5yr_high_pct")) or 0.0
-    left_side_absorption = pulse_events_30d >= 2 and drawdown >= 50.0
-    level2_bonus = 0.0
-    if event_signals.get("buyback"):
-        level2_bonus += 7.0
-    if event_signals.get("shareholder_support"):
-        level2_bonus += 6.0
-    if event_signals.get("asset_unlock") or event_signals.get("restructuring"):
-        level2_bonus += 7.0
-    score = clamp(level1_score + level2_bonus, 0, 100)
-    if left_side_absorption:
-        score = max(score, 92.0)
+    latest_close = safe_float(kline.get("latest_close"))
+    low_5y = safe_float(kline.get("low_5y"))
+    rebound_from_low = None if latest_close in (None, 0) or low_5y in (None, 0) else latest_close / low_5y - 1
+    current_vs_high = safe_float(kline.get("current_vs_5yr_high") or kline.get("current_vs_high"))
+    volume_ratio = safe_float(kline.get("volume_ratio_20_vs_120"))
+    avg_turnover_20d = safe_float(kline.get("avg_turnover_20d"))
+
+    qualified_absorption = bool(
+        volume_ratio is not None
+        and volume_ratio >= 1.10
+        and drawdown >= 35.0
+        and rebound_from_low is not None
+        and 0.08 <= rebound_from_low <= 0.45
+        and (current_vs_high is None or current_vs_high <= 75.0)
+    )
+    breakout_confirmed = bool(
+        volume_ratio is not None
+        and volume_ratio >= 1.50
+        and avg_turnover_20d not in (None, 0)
+        and avg_turnover_20d >= 200_000_000
+        and current_vs_high is not None
+        and current_vs_high >= 50.0
+    )
+    catalyst_confirmed = bool(
+        event_signals.get("buyback")
+        or event_signals.get("shareholder_support")
+        or event_signals.get("asset_unlock")
+        or event_signals.get("restructuring")
+    )
+    fundamental_momentum_score, fm_details = _score_fundamental_momentum(scan_data)
+
+    score = level1_score
+    if qualified_absorption:
+        score = max(score, 68.0)
+    if breakout_confirmed:
+        score += 8.0
+    if catalyst_confirmed:
+        score += 7.0
+    if fundamental_momentum_score > 0:
+        score += fundamental_momentum_score * 0.15
+    if qualified_absorption and not (breakout_confirmed or catalyst_confirmed or fundamental_momentum_score >= 60.0):
+        score = min(score, 80.0)
+    elif not catalyst_confirmed:
+        score = min(score, 85.0)
+
+    score = clamp(score, 0, 100)
     flow_stage = "latent"
-    if left_side_absorption:
-        flow_stage = "trend"
-    elif score >= 85:
+    if score >= 90 and catalyst_confirmed:
         flow_stage = "crowded"
     elif score >= 70:
         flow_stage = "trend"
-    elif score >= 50:
+    elif score >= 50 or qualified_absorption:
         flow_stage = "ignition"
     elif score < 25:
         flow_stage = "abandoned"
@@ -373,13 +534,20 @@ def score_flow_confirmation(scan_data: dict[str, Any], driver_stack: dict[str, A
         score,
         availability="full",
         confidence="partial" if not event_signals else "full",
-        reason=f"l1_raw={level1_score:.1f}, l2_raw={level2_bonus:.1f}, clamped={score:.1f}",
+        reason=(
+            f"l1_raw={level1_score:.1f}, fm={fundamental_momentum_score:.1f}, "
+            f"qualified_absorption={qualified_absorption}, breakout={breakout_confirmed}, "
+            f"catalyst={catalyst_confirmed}, clamped={score:.1f}"
+        ),
         inputs_used={
             "volume_ratio_score": volume_ratio_score,
             "drawdown_rebound_score": drawdown_rebound_score,
             "turnover_expansion_score": turnover_expansion_score,
-            "pulse_volume_events_30d": pulse_events_30d,
-            "left_side_absorption": left_side_absorption,
+            "qualified_absorption": qualified_absorption,
+            "breakout_confirmed": breakout_confirmed,
+            "catalyst_confirmed": catalyst_confirmed,
+            "fundamental_momentum_score": round(fundamental_momentum_score, 2),
+            "fundamental_momentum_details": fm_details,
             "event_signals": sorted(event_signals.keys()),
         },
         extra={"flow_stage": flow_stage},

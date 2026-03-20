@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from utils.config_loader import load_scoring_rules
+from utils.source_lineage import format_data_lineage, summarize_scan_data_lineage
 from utils.value_utils import normalize_text
 
 
@@ -45,13 +46,19 @@ def _load_dimension_max() -> dict[str, float]:
 def _fmt_price(value: Any) -> str:
     if value in (None, ""):
         return "N/A"
-    return f"{float(value):.2f}"
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return "N/A"
 
 
 def _fmt_pct(value: Any) -> str:
     if value in (None, ""):
         return "N/A"
-    return f"{float(value) * 100:.1f}%"
+    try:
+        return f"{float(value) * 100:.1f}%"
+    except (TypeError, ValueError):
+        return "N/A"
 
 
 def _fmt_text_list(values: list[Any]) -> str:
@@ -122,6 +129,7 @@ def generate_deep_dive_report(
         margin_of_safety = valuation_summary.get("floor_protection") - 1
     priced_state = valuation_summary.get("priced_in", valuation_summary.get("priced_state", "unknown"))
     report_path = Path(report_dir) / f"{stock_code}_{company_name}_deep_dive.md"
+    data_lineage = summarize_scan_data_lineage(scan_data)
 
     lines = [
         "# Single Stock Deep Dive",
@@ -136,6 +144,7 @@ def generate_deep_dive_report(
         f"- sector route: {driver_stack.get('sector_route', opportunity.get('sector_route', 'unknown'))}",
         f"- position state: {position_state}",
         f"- state transition: {prev_state} -> {position_state} ({transition_reason})",
+        f"- data lineage: {format_data_lineage(data_lineage)}",
         "",
         "## 2. Why this stock may be mispriced",
         f"- what the market likely sees: {' '.join(synthesis_result.get('market_perception', []))}",
@@ -257,6 +266,8 @@ def generate_market_scan_report(
     secondary_watchlist: list[dict[str, Any]],
     rejected: list[dict[str, Any]],
     report_dir: str,
+    scanner_diagnostics: dict[str, Any] | None = None,
+    sector_snapshot: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     report_path = Path(report_dir) / "market_opportunity_scan.md"
     ranking_rows = priority_shortlist + secondary_watchlist + rejected
@@ -277,8 +288,32 @@ def generate_market_scan_report(
         "## 3. Results summary",
         f"- {results_summary}",
         "",
-        "## 4. Priority shortlist",
     ]
+    if scanner_diagnostics:
+        lines.extend(
+            [
+                "### Scanner diagnostics",
+                f"- partial survivors: {int(scanner_diagnostics.get('partial_survivor_count', 0) or 0)}",
+                f"- full enrichments: {int(scanner_diagnostics.get('full_enrichment_count', 0) or 0)}",
+                f"- deferred to watchlist: {int(scanner_diagnostics.get('deferred_watchlist_count', 0) or 0)}",
+                "",
+            ]
+        )
+    if sector_snapshot:
+        lines.append("### Sector overlay snapshot")
+        for row in sector_snapshot:
+            lines.append(
+                f"- {row.get('industry_group', 'unknown')} | "
+                f"state={row.get('sector_cycle_state', 'neutral')} | "
+                f"members={int(row.get('sector_member_count', 0) or 0)} | "
+                f"score={float(row.get('sector_cycle_score', 0.0) or 0.0):.1f}"
+            )
+        lines.append("")
+    lines.extend(
+        [
+        "## 4. Priority shortlist",
+        ]
+    )
     for item in priority_shortlist:
         edge_summary = (
             f"state={item.get('position_state', 'unknown')} | "
@@ -292,17 +327,22 @@ def generate_market_scan_report(
                 f"  mispricing: {item['mispricing']}",
                 f"  catalysts: {', '.join(item['catalysts']) or 'N/A'}",
                 f"  risks: {', '.join(item['risks']) or 'N/A'}",
+                f"  sources: {format_data_lineage(item.get('data_lineage'))}",
                 f"  why passed: {item['why_passed']}",
                 f"  next step: {item['next_step']}",
             ]
         )
     lines.extend(["", "## 5. Secondary watchlist"])
     for item in secondary_watchlist:
-        lines.append(
+        line = (
             f"- {item['ticker']} / {item['company_name']} | {item['opportunity_type']} | "
             f"state={item.get('position_state', 'unknown')} | U={item.get('underwrite_score', 'N/A')} | "
             f"R={item.get('realization_score', 'N/A')} | {item['thesis']}"
         )
+        data_lineage = item.get("data_lineage") or {}
+        if data_lineage:
+            line += f" | sources: {format_data_lineage(data_lineage, separator=', ')}"
+        lines.append(line)
     lines.extend(["", "## 6. Rejected ideas"])
     for item in rejected:
         lines.append(f"- {item['ticker']} / {item['company_name']}: {item['reason']}")

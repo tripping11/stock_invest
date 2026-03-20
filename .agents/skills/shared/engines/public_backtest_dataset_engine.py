@@ -38,6 +38,8 @@ OUTPUT_SIGNAL_COLUMNS = [
     "position_state",
     "primary_type",
     "sector_route",
+    "industry_group",
+    "sector_cycle_sensitive",
     "announcement_date",
     "reject_reason",
 ]
@@ -480,6 +482,8 @@ def build_public_backtest_inputs(
                     "position_state": normalize_text(gate_result.get("position_state")).lower(),
                     "primary_type": normalize_text((gate_result.get("driver_stack") or {}).get("primary_type")).lower(),
                     "sector_route": normalize_text((gate_result.get("driver_stack") or {}).get("sector_route")).lower(),
+                    "industry_group": normalize_text((gate_result.get("driver_stack") or {}).get("industry_group")).lower(),
+                    "sector_cycle_sensitive": bool((gate_result.get("driver_stack") or {}).get("sector_cycle_sensitive", False)),
                     "announcement_date": signal_date.normalize(),
                     "reject_reason": "; ".join(gate_result.get("hard_vetos", []) or []),
                 }

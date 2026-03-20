@@ -2,6 +2,7 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SHARED_DIR = Path(__file__).resolve().parents[1]
@@ -42,6 +43,16 @@ class ProviderRoutingTests(unittest.TestCase):
         deep_sniper_engine = _load_module("deep_sniper_engine_provider_test", DEEP_DIVE_ENGINE_PATH)
 
         self.assertIs(deep_sniper_engine.run_full_scan, provider_router.run_full_scan)
+
+    def test_get_all_a_share_stocks_marks_fallback_source_meta(self) -> None:
+        from adapters import provider_router
+
+        with patch.object(provider_router.SCAN_ADAPTER, "get_all_a_share_stocks", return_value={"status": "error: primary down", "data": []}, create=True):
+            with patch.object(provider_router.baostock_adapter, "get_all_a_share_stocks", return_value={"status": "ok", "data": [{"code": "600001"}]}, create=True):
+                result = provider_router.get_all_a_share_stocks()
+
+        self.assertEqual(result["_source_meta"]["source_type"], "baostock")
+        self.assertEqual(result["_source_meta"]["status"], "ok")
 
 
 if __name__ == "__main__":

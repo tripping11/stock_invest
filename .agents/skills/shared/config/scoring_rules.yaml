@@ -107,3 +107,23 @@ elasticity_model:
     ignition: 2
     latent: 0
     abandoned: 0
+
+bottom_pattern:
+  low_position_threshold: 55
+  high_position_threshold: 85
+  deep_value_pb_threshold: 0.90
+  elevated_pb_threshold: 2.50
+  low_pb_percentile_threshold: 20
+  high_pb_percentile_threshold: 80
+  position_low_score: 2.0
+  position_high_penalty: 1.5
+  deep_value_pb_score: 2.0
+  elevated_pb_penalty: 1.5
+  low_pb_percentile_score: 1.0
+  high_pb_percentile_penalty: 1.0
+  score_bounds:
+    min: -3.0
+    max: 5.0
+  signal_bands:
+    favorable_min: 3.0
+    mixed_min: 1.0

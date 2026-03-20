@@ -173,6 +173,125 @@ sector_routes:
       - 人工智能
       - 高端制造
 
+industry_groups:
+  coal:
+    keywords:
+      - 煤炭
+    route_default: core_resource
+    cycle_sensitive: true
+  steel:
+    keywords:
+      - 钢铁
+    route_default: core_resource
+    cycle_sensitive: true
+  nonferrous:
+    keywords:
+      - 有色
+      - 铜
+      - 铝
+      - 黄金
+    route_default: core_resource
+    cycle_sensitive: true
+  oil_gas_chem:
+    keywords:
+      - 石油
+      - 石化
+      - 化工
+    route_default: core_resource
+    cycle_sensitive: true
+  building_materials:
+    keywords:
+      - 纯碱
+      - 玻璃
+      - 水泥
+    route_default: core_resource
+    cycle_sensitive: true
+  shipping_port:
+    keywords:
+      - 航运
+      - 港口
+      - 造船
+    route_default: rigid_shovel
+    cycle_sensitive: true
+  engineering_machinery:
+    keywords:
+      - 工程机械
+      - 电力设备
+      - 设备制造
+    route_default: rigid_shovel
+    cycle_sensitive: true
+  banks:
+    keywords:
+      - 银行
+    route_default: financial_asset
+    cycle_sensitive: true
+  brokers:
+    keywords:
+      - 券商
+    route_default: financial_asset
+    cycle_sensitive: true
+  insurers:
+    keywords:
+      - 保险
+    route_default: financial_asset
+    cycle_sensitive: true
+  developers:
+    keywords:
+      - 地产
+      - 土地储备
+    route_default: financial_asset
+    cycle_sensitive: true
+  property_mgmt:
+    keywords:
+      - 物业
+      - 园区
+      - REIT
+    route_default: financial_asset
+    cycle_sensitive: false
+  liquor_food:
+    keywords:
+      - 白酒
+      - 食品饮料
+      - 调味品
+    route_default: consumer
+    cycle_sensitive: false
+  appliances:
+    keywords:
+      - 家电
+    route_default: consumer
+    cycle_sensitive: false
+  healthcare_services:
+    keywords:
+      - 医疗服务
+      - 医药商业
+    route_default: consumer
+    cycle_sensitive: false
+  software_saas:
+    keywords:
+      - 软件开发
+      - SaaS
+      - 云服务
+      - 互联网服务
+    route_default: tech
+    cycle_sensitive: false
+  semis_ai:
+    keywords:
+      - 半导体
+      - 芯片
+      - 人工智能
+    route_default: tech
+    cycle_sensitive: false
+  military:
+    keywords:
+      - 军工
+      - 航空发动机
+      - 航天
+      - 导弹
+      - 舰船
+      - 雷达
+    route_default: core_military
+    cycle_sensitive: false
+
 primary_type_hints:
   turnaround:
     keywords:

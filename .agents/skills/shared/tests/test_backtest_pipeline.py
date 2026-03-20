@@ -13,6 +13,7 @@ sys.path.insert(0, str(SHARED_DIR))
 
 from engines.backtest_engine import run_vcrf_backtest, select_round_candidates
 from engines.flow_realization_engine import score_elasticity, score_flow_confirmation, score_realization_axis
+from engines.sector_cycle_engine import build_sector_snapshot
 from engines.signal_library_engine import expand_signal_daily, normalize_signal_month_end, resolve_effective_date
 from engines.valuation_engine import build_three_case_valuation
 from utils.config_loader import load_backtest_protocol
@@ -145,7 +146,7 @@ class FlowAndElasticityUpgradeTests(unittest.TestCase):
         self.assertLessEqual(large["score"], 20.0)
         self.assertLessEqual(trapped["score"], 15.0)
 
-    def test_flow_confirmation_detects_left_side_absorption_pulses(self) -> None:
+    def test_flow_confirmation_caps_left_side_absorption_without_fundamental_confirmation(self) -> None:
         result = score_flow_confirmation(
             {
                 "stock_kline": {
@@ -164,8 +165,51 @@ class FlowAndElasticityUpgradeTests(unittest.TestCase):
             {"market": "A-share", "modifiers": {"flow_stage": "latent"}},
         )
 
-        self.assertGreaterEqual(result["score"], 90.0)
+        self.assertLessEqual(result["score"], 80.0)
+        self.assertEqual(result["flow_stage"], "ignition")
+        self.assertTrue(result["inputs_used"]["qualified_absorption"])
+        self.assertLess(result["inputs_used"]["fundamental_momentum_score"], 60.0)
+
+    def test_flow_confirmation_promotes_to_trend_when_fundamental_momentum_confirms(self) -> None:
+        result = score_flow_confirmation(
+            {
+                "stock_kline": {
+                    "data": {
+                        "drawdown_from_5yr_high_pct": 52.0,
+                        "avg_turnover_20d": 280_000_000,
+                        "avg_turnover_120d": 120_000_000,
+                        "volume_ratio_20_vs_120": 1.7,
+                        "latest_close": 10.0,
+                        "low_5y": 8.4,
+                        "current_vs_5yr_high": 54.0,
+                    }
+                },
+                "income_statement": {
+                    "data": [
+                        {"报告期": "20241231", "营业总收入": 12_000_000_000, "归属于母公司所有者的净利润": 900_000_000},
+                        {"报告期": "20240930", "营业总收入": 8_700_000_000, "归属于母公司所有者的净利润": 540_000_000},
+                    ]
+                },
+                "cashflow_statement": {
+                    "data": [
+                        {"报告期": "20241231", "经营活动产生的现金流量净额": 1_050_000_000},
+                        {"报告期": "20240930", "经营活动产生的现金流量净额": 620_000_000},
+                    ]
+                },
+                "balance_sheet": {
+                    "data": [
+                        {"报告期": "20241231", "资产总计": 20_000_000_000, "归属于母公司所有者权益合计": 9_000_000_000},
+                        {"报告期": "20240930", "资产总计": 19_800_000_000, "归属于母公司所有者权益合计": 8_400_000_000},
+                    ]
+                },
+                "event_signals": {},
+            },
+            {"market": "A-share", "modifiers": {"flow_stage": "latent"}},
+        )
+
+        self.assertGreaterEqual(result["inputs_used"]["fundamental_momentum_score"], 60.0)
         self.assertEqual(result["flow_stage"], "trend")
+        self.assertGreaterEqual(result["score"], 70.0)
 
     def test_realization_axis_reweights_cyclical_scores_away_from_repair_and_default_50s(self) -> None:
         result = score_realization_axis(
@@ -365,6 +409,93 @@ class SignalLibraryTests(unittest.TestCase):
 
 
 class RoundProtocolBacktestTests(unittest.TestCase):
+    def test_sector_snapshot_classifies_favored_and_avoid_groups(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "COAL1",
+                        "vcrf_state": "ATTACK",
+                        "flow_stage": "trend",
+                        "underwrite_score": 84.0,
+                        "realization_score": 82.0,
+                        "recognition_upside": 0.32,
+                        "industry_group": "coal",
+                        "sector_cycle_sensitive": True,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "COAL2",
+                        "vcrf_state": "READY",
+                        "flow_stage": "ignition",
+                        "underwrite_score": 80.0,
+                        "realization_score": 78.0,
+                        "recognition_upside": 0.24,
+                        "industry_group": "coal",
+                        "sector_cycle_sensitive": True,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "COAL3",
+                        "vcrf_state": "ATTACK",
+                        "flow_stage": "trend",
+                        "underwrite_score": 83.0,
+                        "realization_score": 80.0,
+                        "recognition_upside": 0.28,
+                        "industry_group": "coal",
+                        "sector_cycle_sensitive": True,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "STEEL1",
+                        "vcrf_state": "ATTACK",
+                        "flow_stage": "latent",
+                        "underwrite_score": 58.0,
+                        "realization_score": 42.0,
+                        "recognition_upside": 0.06,
+                        "industry_group": "steel",
+                        "sector_cycle_sensitive": True,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "STEEL2",
+                        "vcrf_state": "REJECT",
+                        "flow_stage": "latent",
+                        "underwrite_score": 40.0,
+                        "realization_score": 28.0,
+                        "recognition_upside": 0.02,
+                        "industry_group": "steel",
+                        "sector_cycle_sensitive": True,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "STEEL3",
+                        "vcrf_state": "REJECT",
+                        "flow_stage": "abandoned",
+                        "underwrite_score": 35.0,
+                        "realization_score": 22.0,
+                        "recognition_upside": 0.01,
+                        "industry_group": "steel",
+                        "sector_cycle_sensitive": True,
+                    },
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03"]),
+        )
+
+        snapshot = build_sector_snapshot(month_end)
+        states = snapshot.set_index("industry_group")["sector_cycle_state"].to_dict()
+
+        self.assertEqual(states["coal"], "favored")
+        self.assertEqual(states["steel"], "avoid")
+
     def test_backtest_csv_writer_serializes_summary_objects_as_json(self) -> None:
         repo_root = Path(__file__).resolve().parents[4]
         script_path = repo_root / "scripts" / "run_vcrf_backtest.py"
@@ -435,8 +566,316 @@ class RoundProtocolBacktestTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(selected[selected["round_id"] == 1]["ticker"].tolist(), ["AAA", "BBB", "CCC"])
-        self.assertEqual(selected[selected["round_id"] == 2]["ticker"].tolist(), ["DDD", "EEE", "FFF"])
+        self.assertEqual(selected["ticker"].nunique(), len(selected))
+        self.assertEqual(len(selected[selected["round_id"] == 1]), 3)
+        self.assertEqual(len(selected[selected["round_id"] == 2]), 3)
+        self.assertNotIn("AAA", selected[selected["round_id"] == 2]["ticker"].tolist())
+
+    def test_round_selection_prefers_candidate_rank_over_effective_date(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "EARLY",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 8.0,
+                        "recognition_price": 10.0,
+                        "total_score": 95.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                        "sector_route": "consumer",
+                        "flow_stage": "ignition",
+                        "underwrite_score": 90.0,
+                        "realization_score": 60.0,
+                        "fundamental_momentum_score": 20.0,
+                        "price_strength_12m": 0.95,
+                        "philosophy_fit_score": 60.0,
+                    },
+                    {
+                        "signal_date": "2020-02-29",
+                        "effective_date": "2020-03-02",
+                        "ticker": "LATE",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 8.0,
+                        "recognition_price": 14.0,
+                        "total_score": 88.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                        "sector_route": "consumer",
+                        "flow_stage": "trend",
+                        "underwrite_score": 82.0,
+                        "realization_score": 78.0,
+                        "fundamental_momentum_score": 84.0,
+                        "price_strength_12m": 0.25,
+                        "philosophy_fit_score": 78.0,
+                    },
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-03-02"]),
+        )
+
+        selected = select_round_candidates(
+            month_end,
+            {
+                "initial_cash": 1_000_000,
+                "round_size": 1,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+            },
+        )
+
+        self.assertEqual(selected["ticker"].tolist(), ["LATE"])
+        self.assertIn("candidate_rank", selected.columns)
+
+    def test_round_selection_spreads_across_sleeves_before_duplicate_sleeves(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "CMPD1",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 8.0,
+                        "recognition_price": 13.0,
+                        "total_score": 96.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                        "sector_route": "consumer",
+                        "flow_stage": "trend",
+                        "underwrite_score": 90.0,
+                        "realization_score": 80.0,
+                        "fundamental_momentum_score": 82.0,
+                        "price_strength_12m": 0.35,
+                        "philosophy_fit_score": 82.0,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "CMPD2",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 8.0,
+                        "recognition_price": 12.8,
+                        "total_score": 94.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                        "sector_route": "consumer",
+                        "flow_stage": "trend",
+                        "underwrite_score": 88.0,
+                        "realization_score": 76.0,
+                        "fundamental_momentum_score": 80.0,
+                        "price_strength_12m": 0.40,
+                        "philosophy_fit_score": 80.0,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "TURN1",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 5.0,
+                        "recognition_price": 9.0,
+                        "total_score": 89.0,
+                        "tradable_flag": 1,
+                        "primary_type": "turnaround",
+                        "sector_route": "unknown",
+                        "flow_stage": "ignition",
+                        "underwrite_score": 83.0,
+                        "realization_score": 74.0,
+                        "fundamental_momentum_score": 78.0,
+                        "price_strength_12m": 0.20,
+                        "philosophy_fit_score": 75.0,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "CYC1",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 6.0,
+                        "recognition_price": 10.5,
+                        "total_score": 88.0,
+                        "tradable_flag": 1,
+                        "primary_type": "cyclical",
+                        "sector_route": "core_resource",
+                        "flow_stage": "trend",
+                        "underwrite_score": 81.0,
+                        "realization_score": 79.0,
+                        "fundamental_momentum_score": 76.0,
+                        "price_strength_12m": 0.30,
+                        "philosophy_fit_score": 77.0,
+                    },
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03"]),
+        )
+
+        selected = select_round_candidates(
+            month_end,
+            {
+                "initial_cash": 1_000_000,
+                "round_size": 3,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+            },
+        )
+
+        self.assertEqual(set(selected["ticker"].tolist()), {"CMPD1", "TURN1", "CYC1"})
+        self.assertEqual(selected["sleeve"].nunique(), 3)
+
+    def test_round_selection_filters_cycle_sensitive_names_by_favored_sector_but_keeps_override(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "COAL1",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 8.0,
+                        "recognition_price": 12.5,
+                        "recognition_upside": 0.28,
+                        "total_score": 90.0,
+                        "tradable_flag": 1,
+                        "primary_type": "cyclical",
+                        "sector_route": "core_resource",
+                        "industry_group": "coal",
+                        "sector_cycle_sensitive": True,
+                        "flow_stage": "trend",
+                        "underwrite_score": 84.0,
+                        "realization_score": 82.0,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "COAL2",
+                        "vcrf_state": "READY",
+                        "floor_price": 8.0,
+                        "recognition_price": 12.0,
+                        "recognition_upside": 0.22,
+                        "total_score": 78.0,
+                        "tradable_flag": 1,
+                        "primary_type": "cyclical",
+                        "sector_route": "core_resource",
+                        "industry_group": "coal",
+                        "sector_cycle_sensitive": True,
+                        "flow_stage": "ignition",
+                        "underwrite_score": 80.0,
+                        "realization_score": 76.0,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "COAL3",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 8.0,
+                        "recognition_price": 12.4,
+                        "recognition_upside": 0.26,
+                        "total_score": 86.0,
+                        "tradable_flag": 1,
+                        "primary_type": "cyclical",
+                        "sector_route": "core_resource",
+                        "industry_group": "coal",
+                        "sector_cycle_sensitive": True,
+                        "flow_stage": "trend",
+                        "underwrite_score": 82.0,
+                        "realization_score": 79.0,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "STEEL1",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 6.0,
+                        "recognition_price": 9.2,
+                        "recognition_upside": 0.48,
+                        "total_score": 92.0,
+                        "tradable_flag": 1,
+                        "primary_type": "cyclical",
+                        "sector_route": "core_resource",
+                        "industry_group": "steel",
+                        "sector_cycle_sensitive": True,
+                        "flow_stage": "latent",
+                        "underwrite_score": 88.0,
+                        "realization_score": 41.0,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "STEEL2",
+                        "vcrf_state": "REJECT",
+                        "floor_price": 5.0,
+                        "recognition_price": 6.0,
+                        "recognition_upside": 0.04,
+                        "total_score": 25.0,
+                        "tradable_flag": 1,
+                        "primary_type": "cyclical",
+                        "sector_route": "core_resource",
+                        "industry_group": "steel",
+                        "sector_cycle_sensitive": True,
+                        "flow_stage": "latent",
+                        "underwrite_score": 40.0,
+                        "realization_score": 26.0,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "STEEL3",
+                        "vcrf_state": "REJECT",
+                        "floor_price": 5.0,
+                        "recognition_price": 6.0,
+                        "recognition_upside": 0.02,
+                        "total_score": 20.0,
+                        "tradable_flag": 1,
+                        "primary_type": "cyclical",
+                        "sector_route": "core_resource",
+                        "industry_group": "steel",
+                        "sector_cycle_sensitive": True,
+                        "flow_stage": "abandoned",
+                        "underwrite_score": 35.0,
+                        "realization_score": 20.0,
+                    },
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "TURN1",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 4.0,
+                        "recognition_price": 7.2,
+                        "recognition_upside": 0.42,
+                        "total_score": 87.0,
+                        "tradable_flag": 1,
+                        "primary_type": "turnaround",
+                        "sector_route": "unknown",
+                        "industry_group": "steel",
+                        "sector_cycle_sensitive": True,
+                        "flow_stage": "ignition",
+                        "underwrite_score": 83.0,
+                        "realization_score": 74.0,
+                    },
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03"]),
+        )
+
+        selected = select_round_candidates(
+            month_end,
+            {
+                "initial_cash": 1_000_000,
+                "round_size": 2,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "sector_overlay": {
+                    "enabled": True,
+                    "favored_only_for_cycle_sensitive": True,
+                    "allow_idiosyncratic_override": True,
+                    "max_positions_per_industry_group": 1,
+                },
+            },
+        )
+
+        self.assertEqual(set(selected["ticker"].tolist()), {"COAL1", "TURN1"})
+        self.assertNotIn("STEEL1", selected["ticker"].tolist())
 
     def test_backtest_returns_empty_rounds_when_no_attack_candidates_exist(self) -> None:
         month_end = normalize_signal_month_end(
@@ -621,6 +1060,300 @@ class RoundProtocolBacktestTests(unittest.TestCase):
         trades = result["rounds"][0]["trades"].set_index("ticker")
         self.assertEqual(trades.loc["AAA", "exit_reason"], "max_loss_stop")
         self.assertAlmostEqual(float(trades.loc["AAA", "exit_price"]), 8.0, places=4)
+
+    def test_backtest_uses_compounder_specific_stop_even_without_global_override(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "AAA",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 12.0,
+                        "recognition_price": 20.0,
+                        "total_score": 95.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                    }
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-02-04"]),
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"date": "2020-02-03", "ticker": "AAA", "open": 10.0, "high": 10.5, "low": 9.5, "close": 10.1},
+                {"date": "2020-02-04", "ticker": "AAA", "open": 10.2, "high": 10.3, "low": 8.7, "close": 8.9},
+            ]
+        )
+
+        result = run_vcrf_backtest(
+            month_end,
+            daily_bars,
+            protocol={
+                "initial_cash": 1_000_000,
+                "round_size": 1,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "lot_size": 100,
+                "max_holding_bars": 504,
+                "same_bar_conflict": "stop_first",
+                "costs": {
+                    "broker_commission_bps": 0.0,
+                    "broker_min_commission": 0.0,
+                    "transfer_fee_bps": 0.0,
+                    "slippage_bps_buy": 0.0,
+                    "slippage_bps_sell": 0.0,
+                    "stamp_duty": [],
+                },
+            },
+        )
+
+        trades = result["rounds"][0]["trades"].set_index("ticker")
+        self.assertEqual(trades.loc["AAA", "exit_reason"], "max_loss_stop")
+        self.assertAlmostEqual(float(trades.loc["AAA", "exit_price"]), 8.8, places=4)
+
+    def test_backtest_disables_max_loss_stop_for_turnaround_names(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "AAA",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 12.0,
+                        "recognition_price": 20.0,
+                        "total_score": 95.0,
+                        "tradable_flag": 1,
+                        "primary_type": "turnaround",
+                    }
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-02-04", "2020-02-05"]),
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"date": "2020-02-03", "ticker": "AAA", "open": 10.0, "high": 10.5, "low": 9.5, "close": 10.1},
+                {"date": "2020-02-04", "ticker": "AAA", "open": 10.2, "high": 10.3, "low": 7.8, "close": 8.1},
+                {"date": "2020-02-05", "ticker": "AAA", "open": 8.2, "high": 8.4, "low": 8.0, "close": 8.3},
+            ]
+        )
+
+        result = run_vcrf_backtest(
+            month_end,
+            daily_bars,
+            protocol={
+                "initial_cash": 1_000_000,
+                "round_size": 1,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "lot_size": 100,
+                "max_holding_bars": 504,
+                "same_bar_conflict": "stop_first",
+                "costs": {
+                    "broker_commission_bps": 0.0,
+                    "broker_min_commission": 0.0,
+                    "transfer_fee_bps": 0.0,
+                    "slippage_bps_buy": 0.0,
+                    "slippage_bps_sell": 0.0,
+                    "stamp_duty": [],
+                },
+            },
+        )
+
+        trades = result["rounds"][0]["trades"].set_index("ticker")
+        self.assertEqual(trades.loc["AAA", "exit_reason"], "end_of_data")
+
+    def test_backtest_refreshes_floor_and_target_from_later_ready_signal(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "AAA",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 8.0,
+                        "recognition_price": 20.0,
+                        "total_score": 95.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                    },
+                    {
+                        "signal_date": "2020-02-29",
+                        "effective_date": "2020-03-02",
+                        "ticker": "AAA",
+                        "vcrf_state": "READY",
+                        "floor_price": 9.0,
+                        "recognition_price": 15.0,
+                        "total_score": 90.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                    },
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-02-04", "2020-03-02", "2020-03-03"]),
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"date": "2020-02-03", "ticker": "AAA", "open": 10.0, "high": 10.5, "low": 9.8, "close": 10.2},
+                {"date": "2020-02-04", "ticker": "AAA", "open": 10.3, "high": 11.0, "low": 10.0, "close": 10.8},
+                {"date": "2020-03-02", "ticker": "AAA", "open": 11.0, "high": 14.0, "low": 10.9, "close": 13.8},
+                {"date": "2020-03-03", "ticker": "AAA", "open": 14.1, "high": 15.5, "low": 13.9, "close": 15.2},
+            ]
+        )
+
+        result = run_vcrf_backtest(
+            month_end,
+            daily_bars,
+            protocol={
+                "initial_cash": 1_000_000,
+                "round_size": 1,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "lot_size": 100,
+                "max_holding_bars": 504,
+                "same_bar_conflict": "stop_first",
+                "costs": {
+                    "broker_commission_bps": 0.0,
+                    "broker_min_commission": 0.0,
+                    "transfer_fee_bps": 0.0,
+                    "slippage_bps_buy": 0.0,
+                    "slippage_bps_sell": 0.0,
+                    "stamp_duty": [],
+                },
+            },
+        )
+
+        trades = result["rounds"][0]["trades"].set_index("ticker")
+        self.assertEqual(trades.loc["AAA", "exit_reason"], "target_hit")
+        self.assertAlmostEqual(float(trades.loc["AAA", "exit_price"]), 15.0, places=4)
+
+    def test_backtest_refills_empty_slot_from_same_sleeve_waitlist(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "AAA",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 8.0,
+                        "recognition_price": 12.0,
+                        "total_score": 95.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                    },
+                    {
+                        "signal_date": "2020-02-29",
+                        "effective_date": "2020-03-02",
+                        "ticker": "BBB",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 7.5,
+                        "recognition_price": 11.0,
+                        "total_score": 88.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                    },
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-02-04", "2020-03-02", "2020-03-03"]),
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"date": "2020-02-03", "ticker": "AAA", "open": 10.0, "high": 10.4, "low": 9.8, "close": 10.2},
+                {"date": "2020-02-04", "ticker": "AAA", "open": 10.3, "high": 12.2, "low": 10.1, "close": 12.0},
+                {"date": "2020-03-02", "ticker": "BBB", "open": 9.0, "high": 9.5, "low": 8.8, "close": 9.3},
+                {"date": "2020-03-03", "ticker": "BBB", "open": 9.4, "high": 11.2, "low": 9.2, "close": 11.0},
+            ]
+        )
+
+        result = run_vcrf_backtest(
+            month_end,
+            daily_bars,
+            protocol={
+                "initial_cash": 1_000_000,
+                "round_size": 1,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "allow_refill_from_waitlist": True,
+                "lot_size": 100,
+                "max_holding_bars": 504,
+                "same_bar_conflict": "stop_first",
+                "costs": {
+                    "broker_commission_bps": 0.0,
+                    "broker_min_commission": 0.0,
+                    "transfer_fee_bps": 0.0,
+                    "slippage_bps_buy": 0.0,
+                    "slippage_bps_sell": 0.0,
+                    "stamp_duty": [],
+                },
+            },
+        )
+
+        trades = result["rounds"][0]["trades"]
+        self.assertEqual(trades["ticker"].tolist(), ["AAA", "BBB"])
+
+    def test_backtest_summary_includes_review_diagnostics(self) -> None:
+        month_end = normalize_signal_month_end(
+            pd.DataFrame(
+                [
+                    {
+                        "signal_date": "2020-01-31",
+                        "effective_date": "2020-02-03",
+                        "ticker": "AAA",
+                        "vcrf_state": "ATTACK",
+                        "floor_price": 8.0,
+                        "recognition_price": 12.0,
+                        "total_score": 95.0,
+                        "tradable_flag": 1,
+                        "primary_type": "compounder",
+                    }
+                ]
+            ),
+            pd.DatetimeIndex(["2020-02-03", "2020-02-04"]),
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"date": "2020-02-03", "ticker": "AAA", "open": 10.0, "high": 10.4, "low": 9.8, "close": 10.2},
+                {"date": "2020-02-04", "ticker": "AAA", "open": 10.3, "high": 12.2, "low": 10.1, "close": 12.0},
+            ]
+        )
+
+        result = run_vcrf_backtest(
+            month_end,
+            daily_bars,
+            protocol={
+                "initial_cash": 1_000_000,
+                "round_size": 1,
+                "total_rounds": 1,
+                "exclude_used_tickers_across_rounds": True,
+                "allow_refill_from_waitlist": True,
+                "lot_size": 100,
+                "max_holding_bars": 504,
+                "same_bar_conflict": "stop_first",
+                "costs": {
+                    "broker_commission_bps": 0.0,
+                    "broker_min_commission": 0.0,
+                    "transfer_fee_bps": 0.0,
+                    "slippage_bps_buy": 0.0,
+                    "slippage_bps_sell": 0.0,
+                    "stamp_duty": [],
+                },
+            },
+        )
+
+        summary = result["rounds"][0]["summary"]
+        for field in (
+            "median_trade_irr",
+            "expectancy",
+            "mfe_mae_ratio",
+            "median_days_to_target",
+            "peak_gross_exposure_ratio",
+            "state_reject_rate",
+        ):
+            self.assertIn(field, summary)
 
     def test_backtest_uses_last_known_price_for_suspended_position_equity(self) -> None:
         month_end = normalize_signal_month_end(

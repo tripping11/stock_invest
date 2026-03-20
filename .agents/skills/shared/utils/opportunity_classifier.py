@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from utils.config_loader import load_moat_dictionary, load_sector_classification
+from utils.config_loader import load_moat_dictionary, load_scoring_rules, load_sector_classification
 from utils.financial_snapshot import extract_latest_revenue_snapshot, extract_latest_revenue_terms
 from utils.value_utils import clamp, extract_first_value, normalize_text, safe_float
 
@@ -28,6 +28,49 @@ CATALYST_KEYWORDS = {
     "policy tailwind": ("政策支持", "补贴", "批复", "牌照", "军品列装"),
     "cycle turn": ("去库存", "补库", "产能出清", "景气回升"),
 }
+
+_BOTTOM_PATTERN_DEFAULTS = {
+    "low_position_threshold": 55.0,
+    "high_position_threshold": 85.0,
+    "deep_value_pb_threshold": 0.90,
+    "elevated_pb_threshold": 2.50,
+    "low_pb_percentile_threshold": 20.0,
+    "high_pb_percentile_threshold": 80.0,
+    "position_low_score": 2.0,
+    "position_high_penalty": 1.5,
+    "deep_value_pb_score": 2.0,
+    "elevated_pb_penalty": 1.5,
+    "low_pb_percentile_score": 1.0,
+    "high_pb_percentile_penalty": 1.0,
+    "score_bounds": {"min": -3.0, "max": 5.0},
+    "signal_bands": {"favorable_min": 3.0, "mixed_min": 1.0},
+}
+
+
+def _join_texts(*values: Any) -> str:
+    return " ".join(normalize_text(value) for value in values if normalize_text(value))
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(value for value in values if value))
+
+
+def _keyword_hits(text: str, keywords: tuple[str, ...] | list[str]) -> list[str]:
+    return [keyword for keyword in keywords if keyword and keyword in text]
+
+
+def _load_bottom_pattern_config() -> dict[str, Any]:
+    rules = load_scoring_rules()
+    config = dict(_BOTTOM_PATTERN_DEFAULTS)
+    overrides = (rules.get("bottom_pattern", {}) if isinstance(rules, dict) else {}) or {}
+    config.update({key: value for key, value in overrides.items() if key not in {"score_bounds", "signal_bands"}})
+    score_bounds = dict(_BOTTOM_PATTERN_DEFAULTS["score_bounds"])
+    score_bounds.update((overrides.get("score_bounds", {}) or {}))
+    signal_bands = dict(_BOTTOM_PATTERN_DEFAULTS["signal_bands"])
+    signal_bands.update((overrides.get("signal_bands", {}) or {}))
+    config["score_bounds"] = score_bounds
+    config["signal_bands"] = signal_bands
+    return config
 
 
 def assess_business_purity(revenue_records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -73,35 +116,40 @@ def assess_business_purity(revenue_records: list[dict[str, Any]]) -> dict[str, A
 
 
 def assess_bottom_pattern(kline_summary: dict[str, Any], valuation_summary: dict[str, Any]) -> dict[str, Any]:
+    cfg = _load_bottom_pattern_config()
     current_vs_high = safe_float(kline_summary.get("current_vs_5yr_high")) or safe_float(kline_summary.get("current_vs_high"))
     pb = safe_float(valuation_summary.get("pb"))
     pb_percentile = safe_float(valuation_summary.get("pb_percentile"))
     score = 0.0
     reasons: list[str] = []
     if current_vs_high is not None:
-        if current_vs_high <= 55:
-            score += 2.0
+        if current_vs_high <= safe_float(cfg.get("low_position_threshold")):
+            score += safe_float(cfg.get("position_low_score")) or 0.0
             reasons.append(f"price is still far below prior highs ({current_vs_high:.1f}% of 5y high)")
-        elif current_vs_high >= 85:
-            score -= 1.5
+        elif current_vs_high >= safe_float(cfg.get("high_position_threshold")):
+            score -= safe_float(cfg.get("position_high_penalty")) or 0.0
             reasons.append(f"price is already near highs ({current_vs_high:.1f}% of 5y high)")
     if pb is not None:
-        if pb <= 0.9:
-            score += 2.0
+        if pb <= safe_float(cfg.get("deep_value_pb_threshold")):
+            score += safe_float(cfg.get("deep_value_pb_score")) or 0.0
             reasons.append(f"PB is deep value at {pb:.2f}")
-        elif pb >= 2.5:
-            score -= 1.5
+        elif pb >= safe_float(cfg.get("elevated_pb_threshold")):
+            score -= safe_float(cfg.get("elevated_pb_penalty")) or 0.0
             reasons.append(f"PB is already elevated at {pb:.2f}")
     if pb_percentile is not None:
-        if pb_percentile <= 20:
-            score += 1.0
+        if pb_percentile <= safe_float(cfg.get("low_pb_percentile_threshold")):
+            score += safe_float(cfg.get("low_pb_percentile_score")) or 0.0
             reasons.append(f"PB percentile is low at {pb_percentile:.1f}%")
-        elif pb_percentile >= 80:
-            score -= 1.0
+        elif pb_percentile >= safe_float(cfg.get("high_pb_percentile_threshold")):
+            score -= safe_float(cfg.get("high_pb_percentile_penalty")) or 0.0
             reasons.append(f"PB percentile is high at {pb_percentile:.1f}%")
+    score_bounds = cfg.get("score_bounds", {}) or {}
+    signal_bands = cfg.get("signal_bands", {}) or {}
+    favorable_min = safe_float(signal_bands.get("favorable_min")) or 3.0
+    mixed_min = safe_float(signal_bands.get("mixed_min")) or 1.0
     return {
-        "score": clamp(score, -3.0, 5.0),
-        "signal": "favorable" if score >= 3 else "mixed" if score >= 1 else "unfavorable",
+        "score": clamp(score, safe_float(score_bounds.get("min")) or -3.0, safe_float(score_bounds.get("max")) or 5.0),
+        "signal": "favorable" if score >= favorable_min else "mixed" if score >= mixed_min else "unfavorable",
         "reason": "; ".join(reasons) if reasons else "insufficient price-position evidence",
     }
 
@@ -212,16 +260,12 @@ def assess_moat_quality(
     extra_texts: list[str] | None = None,
 ) -> dict[str, Any]:
     dictionary = load_moat_dictionary()
-    combined = " ".join(
-        text
-        for text in [
-            normalize_text(company_profile.get("主营业务")),
-            normalize_text(company_profile.get("经营范围")),
-            normalize_text(company_profile.get("公司名称")),
-            *extract_latest_revenue_terms(revenue_records or [], limit=8),
-            *(extra_texts or []),
-        ]
-        if text
+    combined = _join_texts(
+        company_profile.get("主营业务"),
+        company_profile.get("经营范围"),
+        company_profile.get("公司名称"),
+        *extract_latest_revenue_terms(revenue_records or [], limit=8),
+        *(extra_texts or []),
     )
     matches: list[str] = []
     for cfg in (dictionary.get("categories", {}) or {}).values():
@@ -229,7 +273,7 @@ def assess_moat_quality(
             if keyword and keyword in combined:
                 matches.append(cfg.get("label", keyword))
                 break
-    unique_matches = list(dict.fromkeys(matches))
+    unique_matches = _dedupe(matches)
     score = min(10, len(unique_matches) * 3 + (1 if unique_matches else 0))
     verdict = "strong" if score >= 8 else "moderate" if score >= 5 else "weak"
     return {
@@ -246,39 +290,31 @@ def assess_management_quality(
     *,
     extra_texts: list[str] | None = None,
 ) -> dict[str, Any]:
-    combined = " ".join(
-        text
-        for text in [
-            normalize_text(company_profile.get("主营业务")),
-            normalize_text(company_profile.get("经营范围")),
-            normalize_text(company_profile.get("实际控制人")),
-            *(extra_texts or []),
-        ]
-        if text
+    combined = _join_texts(
+        company_profile.get("主营业务"),
+        company_profile.get("经营范围"),
+        company_profile.get("实际控制人"),
+        *(extra_texts or []),
     )
     score = 5 + int(ownership.get("score_impact", 0))
     reasons: list[str] = [normalize_text(ownership.get("label"))] if ownership.get("label") else []
     red_flags: list[str] = []
-    for keyword in GOOD_MANAGEMENT_KEYWORDS:
-        if keyword in combined:
-            score += 1
-            reasons.append(keyword)
-    for keyword in BAD_MANAGEMENT_KEYWORDS:
-        if keyword in combined:
-            score -= 2
-            red_flags.append(keyword)
+    reasons.extend(_keyword_hits(combined, GOOD_MANAGEMENT_KEYWORDS))
+    red_flags.extend(_keyword_hits(combined, BAD_MANAGEMENT_KEYWORDS))
+    score += len(_keyword_hits(combined, GOOD_MANAGEMENT_KEYWORDS))
+    score -= len(_keyword_hits(combined, BAD_MANAGEMENT_KEYWORDS)) * 2
     score = int(clamp(score, 0, 10))
     verdict = "strong" if score >= 8 else "adequate" if score >= 5 else "weak"
     return {
         "score": score,
         "verdict": verdict,
-        "reasons": list(dict.fromkeys(reasons)),
-        "red_flags": list(dict.fromkeys(red_flags)),
+        "reasons": _dedupe(reasons),
+        "red_flags": _dedupe(red_flags),
     }
 
 
 def assess_catalyst_strength(*texts: str) -> dict[str, Any]:
-    combined = " ".join(normalize_text(text) for text in texts if normalize_text(text))
+    combined = _join_texts(*texts)
     matched: list[str] = []
     for label, keywords in CATALYST_KEYWORDS.items():
         if any(keyword in combined for keyword in keywords):

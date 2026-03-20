@@ -1,0 +1,4 @@
+ticker,entry_date,exit_date,entry_price,exit_price,shares,primary_type,sector_route,industry_group,sleeve,slot_in_round,hold_bars,hold_days,days_to_target,exit_reason,gross_return,net_pnl,annualized_return,mfe_pct,mae_pct
+000635,2022-05-05,2022-05-31,7.5037,11.3843,66600,turnaround,financial_asset,developers,value_repair,1,19,27,27.0,target_hit,0.517149,257296.81,279.04809110809265,0.627186,-0.008496
+000627,2023-09-01,2024-05-06,3.2416,2.8512,154200,compounder,financial_asset,insurers,quality,1,159,249,,max_loss_stop,-0.12044,-60713.95,-0.1714842089541374,0.058113,-0.349091
+000042,2024-11-01,2024-12-31,5.2726,4.4678,94800,turnaround,financial_asset,developers,value_repair,2,44,61,,end_of_data,-0.15265,-76799.7,-0.6288452851696328,0.132261,-0.154123

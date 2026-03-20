@@ -1,5 +1,31 @@
 # VCRF Backtesting
 
+## Context Hub Notes
+
+### Run Isolation Discipline
+
+- Every backtest run must use a fresh `out-dir` for both input building and final execution output.
+- After any code, config, or scoring change, do not reuse prior `signals_month_end`, `daily_bars`, `round_summary`, or `backtest_manifest` files.
+- Freeze the universe list first, then rebuild the full point-in-time dataset from raw providers for the new run.
+- Compute performance metrics only from the current run's newly generated `round_summary.csv`, never by mixing historical run outputs.
+- If an older run is needed for comparison, keep it in a separate directory and compare the two runs explicitly; do not overwrite or append into an existing run directory.
+
+### Fixed Backtest Rules
+
+- Use the deterministic local execution engine.
+- Entries execute at the next trading day's open after `effective_date`.
+- Recognition exits use limit semantics at `recognition_price`.
+- Floor exits use stop semantics at `floor_price`.
+- Same-bar target/stop conflicts default to `stop_first` unless the protocol is explicitly changed.
+- A-share entries are rounded down to 100-share lots.
+- Round count, position count, holding cap, fees, slippage, and protective stops come from `.agents/skills/shared/config/backtest_protocol.yaml`.
+
+### Legacy Crocodile Boundary
+
+- The archived crocodile system under `.agents/_archive/a_stock_sniper/` contains legacy scan, scoring, valuation, and report logic.
+- It does not contain a standalone historical month-end signal builder plus execution-layer backtest pipeline.
+- In this repository, executable backtests must therefore run through the current local deterministic backtest engine, while any crocodile-compatible discipline must be treated as a research constraint rather than a separate runnable backtest engine.
+
 ## Inputs
 
 The backtest layer expects two tabular inputs:

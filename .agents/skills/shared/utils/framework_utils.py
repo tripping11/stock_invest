@@ -43,6 +43,7 @@ from utils.primary_type_router import (  # noqa: F401
     build_driver_stack,
     determine_primary_type,
     infer_preliminary_cycle_state,
+    resolve_industry_group,
     resolve_sector_route,
 )
 from utils.vcrf_probes import (  # noqa: F401

@@ -16,9 +16,12 @@ import pandas as pd
 
 SHARED_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SHARED_DIR))
+REPO_ROOT = SHARED_DIR.parents[2]
 RADAR_ENGINE_PATH = SHARED_DIR.parent / "market-opportunity-scanner" / "scripts" / "engines" / "radar_scan_engine.py"
+SECTOR_OVERLAY_VALIDATION_PATH = REPO_ROOT / "scripts" / "validate_sector_overlay.py"
 
 from engines.report_engine import generate_deep_dive_report
+from engines.report_engine import generate_market_scan_report
 from engines.synthesis_engine import build_investment_synthesis
 from engines.valuation_engine import build_three_case_valuation
 from adapters import akshare_adapter
@@ -35,6 +38,14 @@ from validators.universal_gate import evaluate_universal_gates
 
 def _load_radar_scan_engine():
     spec = importlib.util.spec_from_file_location("radar_scan_engine_under_test", RADAR_ENGINE_PATH)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_sector_overlay_validation_module():
+    spec = importlib.util.spec_from_file_location("sector_overlay_validation_under_test", SECTOR_OVERLAY_VALIDATION_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(module)
@@ -435,7 +446,9 @@ class PartialRadarFlowTests(unittest.TestCase):
                             result = radar_scan_engine.run_radar_scan("A-share", limit=1)
 
         ranked = result["priority_shortlist"] + result["secondary_watchlist"] + result["rejected"]
-        self.assertEqual(ranked, [expected_payload])
+        self.assertEqual(len(ranked), 1)
+        for key, value in expected_payload.items():
+            self.assertEqual(ranked[0].get(key), value, f"payload field {key} should preserve existing value")
 
     def test_two_stage_radar_preserves_baostock_universe_fallback(self) -> None:
         radar_scan_engine = _load_radar_scan_engine()
@@ -780,6 +793,11 @@ class ValuationAndReportTests(unittest.TestCase):
         months = akshare_adapter._estimate_consolidation_months(pd.Series(["1,234"]))
         self.assertEqual(months, 1)
 
+    def test_report_price_formatter_returns_na_for_non_numeric_values(self) -> None:
+        from engines import report_engine
+
+        self.assertEqual(report_engine._fmt_price("not-a-number"), "N/A")
+
     def _asset_play_scan_data(self) -> dict:
         return {
             "company_profile": {"data": {"行业": "银行", "主营业务": "商业银行业务", "实际控制人": "省国资委", "股票简称": "测试银行"}},
@@ -871,6 +889,83 @@ class ValuationAndReportTests(unittest.TestCase):
         self.assertIsNone(valuation["base_case"]["implied_equity_value"])
         self.assertIsNone(valuation["bull_case"]["implied_equity_value"])
 
+    def test_cyclical_valuation_uses_configured_route_case_overrides(self) -> None:
+        from engines import valuation_engine
+
+        discipline = {
+            "route_methods": {"core_resource": {"normalized_anchor": "core_resource_mid_cycle"}},
+            "route_case_overrides": {
+                "core_resource": {
+                    "floor": {
+                        "valuation_method": "configured_floor",
+                        "assumption": "configured floor stress",
+                        "equity_multiple": 0.60,
+                    },
+                    "normalized": {
+                        "assumption": "configured normalized anchor",
+                        "profit_multiple": 7.0,
+                        "equity_multiple": 0.95,
+                    },
+                    "recognition": {
+                        "valuation_method": "configured_recognition",
+                        "assumption": "configured recognition",
+                        "profit_multiple": 11.0,
+                        "normalized_multiple": 1.40,
+                    },
+                }
+            },
+        }
+        with patch.object(valuation_engine, "load_valuation_discipline", return_value=discipline):
+            valuation = valuation_engine.build_three_case_valuation(
+                "600348",
+                {
+                    "company_profile": {"data": {"行业": "煤炭", "主营业务": "煤炭开采与销售"}},
+                    "revenue_breakdown": {"data": []},
+                    "realtime_quote": {"data": {"最新价": 10.0, "总市值": 1_000.0}},
+                    "stock_kline": {"data": {"latest_close": 10.0}},
+                    "income_statement": {"data": [{"报告期": "20241231", "归属于母公司股东的净利润": 100.0}]},
+                    "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司股东权益合计": 800.0}]},
+                },
+                {"primary_type": "cyclical", "sector_route": "core_resource"},
+            )
+
+        self.assertEqual(valuation["floor_case"]["valuation_method"], "configured_floor")
+        self.assertEqual(valuation["floor_case"]["assumptions"], ["configured floor stress"])
+        self.assertEqual(valuation["floor_case"]["implied_equity_value"], 480.0)
+        self.assertEqual(valuation["base_case"]["implied_equity_value"], 700.0)
+        self.assertEqual(valuation["bull_case"]["valuation_method"], "configured_recognition")
+        self.assertEqual(valuation["bull_case"]["implied_equity_value"], 1100.0)
+
+    def test_bottom_pattern_uses_configured_thresholds(self) -> None:
+        from utils import opportunity_classifier as opportunity_classifier_module
+
+        scoring_rules = {
+            "bottom_pattern": {
+                "low_position_threshold": 40.0,
+                "high_position_threshold": 90.0,
+                "deep_value_pb_threshold": 0.60,
+                "elevated_pb_threshold": 3.0,
+                "low_pb_percentile_threshold": 10.0,
+                "high_pb_percentile_threshold": 90.0,
+                "position_low_score": 2.0,
+                "position_high_penalty": 1.5,
+                "deep_value_pb_score": 2.0,
+                "elevated_pb_penalty": 1.5,
+                "low_pb_percentile_score": 1.0,
+                "high_pb_percentile_penalty": 1.0,
+                "score_bounds": {"min": -3.0, "max": 5.0},
+                "signal_bands": {"favorable_min": 3.0, "mixed_min": 1.0},
+            }
+        }
+
+        with patch.object(opportunity_classifier_module, "load_scoring_rules", return_value=scoring_rules):
+            result = opportunity_classifier_module.assess_bottom_pattern(
+                {"current_vs_5yr_high": 55},
+                {"pb": 0.90, "pb_percentile": 20},
+            )
+
+        self.assertEqual(result["signal"], "unfavorable")
+
     def test_report_contains_required_sections(self) -> None:
         scan_data = self._asset_play_scan_data()
         opportunity = determine_opportunity_type(
@@ -900,6 +995,39 @@ class ValuationAndReportTests(unittest.TestCase):
             "## 14. Bottom line",
         ]:
             self.assertIn(heading, content)
+
+    def test_deep_dive_report_includes_data_lineage_summary(self) -> None:
+        scan_data = self._asset_play_scan_data()
+        scan_data["realtime_quote"]["_source_meta"] = {"source_type": "tushare", "status": "ok"}
+        scan_data["stock_kline"]["_source_meta"] = {"source_type": "tushare", "status": "ok"}
+        scan_data["valuation_history"]["_source_meta"] = {"source_type": "akshare", "status": "ok_fallback_derived"}
+        scan_data["income_statement"]["_source_meta"] = {"source_type": "tushare", "status": "ok"}
+        scan_data["balance_sheet"]["_source_meta"] = {"source_type": "tushare", "status": "ok"}
+        opportunity = determine_opportunity_type(
+            "601000",
+            scan_data["company_profile"]["data"],
+            revenue_records=scan_data["revenue_breakdown"]["data"],
+        )
+        gate = evaluate_universal_gates("601000", scan_data, opportunity_context=opportunity)
+        valuation = build_three_case_valuation("601000", scan_data, opportunity)
+        synthesis = build_investment_synthesis("601000", "测试银行", gate, valuation)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report = generate_deep_dive_report(
+                "601000",
+                "测试银行",
+                market="A-share",
+                scan_data=scan_data,
+                gate_result=gate,
+                valuation_result=valuation,
+                synthesis_result=synthesis,
+                report_dir=temp_dir,
+            )
+            content = Path(report["report_path"]).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "data lineage: quote=tushare (ok) | valuation=akshare (ok_fallback_derived) | fundamentals=tushare (ok)",
+            content,
+        )
 
     def test_report_uses_configured_dimension_max_in_scorecard(self) -> None:
         gate_result = {
@@ -965,6 +1093,65 @@ class ValuationAndReportTests(unittest.TestCase):
         self.assertIn("- type clarity: 5.0/7", content)
         self.assertIn("- business quality: 12.0/21", content)
         self.assertIn("- total: 64.0/100", content)
+
+    def test_market_scan_report_includes_sector_budget_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report = generate_market_scan_report(
+                market="A-share",
+                scope_text="A-share (raw=12, coarse=8, fine=5)",
+                results_summary="mixed opportunity set",
+                priority_shortlist=[
+                    {
+                        "ticker": "600348",
+                        "company_name": "测试煤炭",
+                        "opportunity_type": "Cyclical",
+                        "position_state": "attack",
+                        "underwrite_score": 82.0,
+                        "realization_score": 78.0,
+                        "thesis": "favored coal",
+                        "mispricing": "cheap with repair",
+                        "catalysts": ["price upcycle"],
+                        "risks": ["policy"],
+                        "data_lineage": {
+                            "quote": "tushare (ok)",
+                            "valuation": "akshare (ok_fallback_derived)",
+                            "fundamentals": "tushare (ok)",
+                        },
+                        "why_passed": "favored sector and score",
+                        "next_step": "deep dive now",
+                    }
+                ],
+                secondary_watchlist=[],
+                rejected=[],
+                report_dir=temp_dir,
+                scanner_diagnostics={
+                    "partial_survivor_count": 5,
+                    "full_enrichment_count": 3,
+                    "deferred_watchlist_count": 2,
+                },
+                sector_snapshot=[
+                    {
+                        "industry_group": "coal",
+                        "sector_member_count": 3,
+                        "sector_cycle_score": 78.0,
+                        "sector_cycle_state": "favored",
+                    },
+                    {
+                        "industry_group": "steel",
+                        "sector_member_count": 2,
+                        "sector_cycle_score": 49.0,
+                        "sector_cycle_state": "avoid",
+                    },
+                ],
+            )
+            content = Path(report["report_path"]).read_text(encoding="utf-8")
+
+        self.assertIn("partial survivors: 5", content)
+        self.assertIn("full enrichments: 3", content)
+        self.assertIn("deferred to watchlist: 2", content)
+        self.assertIn("coal | state=favored | members=3 | score=78.0", content)
+        self.assertIn("steel | state=avoid | members=2 | score=49.0", content)
+        self.assertIn("sources: quote=tushare (ok) | valuation=akshare (ok_fallback_derived) | fundamentals=tushare (ok)", content)
 
 
 class LegacyCleanupTests(unittest.TestCase):
@@ -1295,6 +1482,29 @@ class VCRFValuationContractTests(unittest.TestCase):
             expected = valuation["normalized_case"]["implied_price"] / valuation["current_price"] - 1
             self.assertAlmostEqual(valuation["summary"]["normalized_upside"], expected, places=4)
 
+    def test_wind_dependency_is_none_when_recognition_price_is_effectively_current_price(self) -> None:
+        from engines import valuation_engine
+
+        scan_data = {
+            "realtime_quote": {"data": {"最新价": 10.0, "总市值": 1_000_000_000}},
+            "stock_kline": {"data": {"latest_close": 10.0}},
+            "income_statement": {"data": []},
+            "balance_sheet": {"data": []},
+        }
+
+        with patch.object(valuation_engine, "load_valuation_discipline", return_value={"route_methods": {"core_resource": {}}}):
+            with patch.object(valuation_engine, "_resolve_route_anchor", return_value=("core_resource", "mid_cycle_anchor")):
+                with patch.object(valuation_engine, "_build_floor_case", return_value={"implied_price": 8.0, "implied_equity_value": 800.0}):
+                    with patch.object(valuation_engine, "_build_normalized_case", return_value={"implied_price": 9.999999999999, "implied_equity_value": 999.9999999999}):
+                        with patch.object(valuation_engine, "_build_recognition_case", return_value={"implied_price": 10.000000000001, "implied_equity_value": 1000.0000000001}):
+                            valuation = valuation_engine.build_three_case_valuation(
+                                "600348",
+                                scan_data,
+                                {"primary_type": "cyclical", "sector_route": "core_resource"},
+                            )
+
+        self.assertIsNone(valuation["summary"]["wind_dependency"])
+
     def test_cyclical_normalized_value_prefers_history_based_anchor(self) -> None:
         scan_data = self._cyclical_scan_data()
         valuation = build_three_case_valuation("600348", scan_data, {"primary_type": "cyclical"})
@@ -1398,7 +1608,16 @@ class VCRFGateAndRadarTests(unittest.TestCase):
         radar_scan_engine = _load_radar_scan_engine()
         scan_data = self._scan_data()
         payload = radar_scan_engine._candidate_payload("600348", "测试股份", scan_data)
-        for field in ("position_state", "flow_stage", "floor_protection", "normalized_upside", "recognition_upside"):
+        for field in (
+            "position_state",
+            "flow_stage",
+            "floor_protection",
+            "normalized_upside",
+            "recognition_upside",
+            "industry_group",
+            "sector_cycle_sensitive",
+            "data_lineage",
+        ):
             self.assertIn(field, payload, f"candidate payload missing VCRF field: {field}")
 
     def test_load_universe_prefers_layered_sample_over_top_market_cap_slice(self) -> None:
@@ -1538,7 +1757,7 @@ class VCRFRadarIntegrationTests(unittest.TestCase):
             ):
                 with patch.object(
                     radar_scan_engine,
-                    "_scan_one_stock",
+                    "_enrich_partial_result",
                     return_value={
                         "kind": "ranked",
                         "order_index": 0,
@@ -1639,6 +1858,118 @@ class VCRFRadarIntegrationTests(unittest.TestCase):
         self.assertEqual([item["ticker"] for item in result["ranked"]], ["600348", "600328"])
         self.assertEqual([item["ticker"] for item in result["priority_shortlist"]], ["600348"])
 
+    def test_radar_sector_budget_limits_full_enrichment_to_favored_and_override_names(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        universe = [
+            {"code": "600001", "name": "CoalA", "industry": "煤炭"},
+            {"code": "600002", "name": "CoalB", "industry": "煤炭"},
+            {"code": "600003", "name": "CoalC", "industry": "煤炭"},
+            {"code": "600004", "name": "SteelA", "industry": "钢铁"},
+            {"code": "600005", "name": "SteelB", "industry": "钢铁"},
+            {"code": "600006", "name": "SteelC", "industry": "钢铁"},
+            {"code": "600007", "name": "TurnA", "industry": "钢铁"},
+        ]
+
+        def fake_scan_steps(stock_code: str, step_map: dict[str, object], **_: object) -> dict[str, dict]:
+            if "income_statement" in step_map or "balance_sheet" in step_map:
+                return {
+                    "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 100_000_000}]},
+                    "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 1_000_000_000}]},
+                }
+            industry = "煤炭" if stock_code in {"600001", "600002", "600003"} else "钢铁"
+            business = "煤炭开采与销售" if industry == "煤炭" else "钢铁冶炼"
+            if stock_code == "600007":
+                business = "困境反转与债务重组推进"
+            return {
+                "company_profile": {"data": {"行业": industry, "主营业务": business, "股票简称": stock_code}},
+                "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": industry, "主营收入": 85, "收入比例": 85}]},
+                "valuation_history": {"data": {"pb": 0.9, "pb_percentile": 18}},
+                "stock_kline": {"data": {"current_vs_5yr_high": 45 if industry == "煤炭" else 88, "latest_close": 10.0}},
+                "realtime_quote": {"data": {"最新价": 10.0, "总市值": 8_000_000_000}},
+            }
+
+        def fake_partial_gate(stock_code: str, scan_data: dict[str, object], **_: object) -> dict[str, object]:
+            industry = ((scan_data.get("company_profile") or {}).get("data") or {}).get("行业")
+            if stock_code == "600007":
+                opportunity = {"primary_type": "turnaround", "primary_label": "Turnaround", "confidence": "high", "sentence": "override"}
+                score_upper_bound = 86.0
+                regime_score = 8.0
+                catalyst_score = 8.0
+                market_score = 4.0
+            elif industry == "煤炭":
+                opportunity = {"primary_type": "cyclical", "primary_label": "Cyclical", "confidence": "high", "sentence": "favored coal"}
+                score_upper_bound = 84.0
+                regime_score = 13.0
+                catalyst_score = 8.0
+                market_score = 4.0
+            else:
+                opportunity = {"primary_type": "cyclical", "primary_label": "Cyclical", "confidence": "high", "sentence": "avoid steel"}
+                score_upper_bound = 70.0
+                regime_score = 5.0
+                catalyst_score = 3.0
+                market_score = 2.0
+            return {
+                "opportunity_context": opportunity,
+                "decidable_hard_vetos": [],
+                "blocked_hard_vetos": [],
+                "score_upper_bound": score_upper_bound,
+                "known_total": score_upper_bound - 8.0,
+                "dimensions": {
+                    "type_clarity": {"score": 5.0, "max": 5.0, "confidence": "full", "requires": []},
+                    "business_quality": {"score": 15.0 if industry == "煤炭" else 10.0, "max": 20.0, "confidence": "full", "requires": []},
+                    "survival": {"score": 10.0, "max": 15.0, "confidence": "partial", "requires": ["income_statement", "balance_sheet"]},
+                    "management": {"score": 7.0, "max": 10.0, "confidence": "full", "requires": []},
+                    "regime_cycle": {"score": regime_score, "max": 15.0, "confidence": "full", "requires": []},
+                    "valuation": {"score": 16.0 if industry == "煤炭" else 14.0, "max": 20.0, "confidence": "full", "requires": []},
+                    "catalyst": {"score": catalyst_score, "max": 10.0, "confidence": "full", "requires": []},
+                    "market_structure": {"score": market_score, "max": 5.0, "confidence": "full", "requires": []},
+                },
+            }
+
+        enriched_calls: list[str] = []
+
+        def fake_scan_one_stock(partial_result: dict[str, object], **_: object) -> dict[str, object]:
+            item = partial_result["item"]
+            enriched_calls.append(str(item["code"]))
+            return {
+                "kind": "ranked",
+                "order_index": int(item["order_index"]),
+                "payload": {
+                    "ticker": str(item["code"]),
+                    "company_name": str(item["name"]),
+                    "position_state": "ready" if str(item["code"]) != "600007" else "attack",
+                    "underwrite_score": 82.0,
+                    "realization_score": 78.0,
+                    "floor_protection": 0.88,
+                    "recognition_upside": 0.36,
+                    "score": 82.0,
+                    "hard_veto": False,
+                    "reason": "ok",
+                    "industry_group": "coal" if str(item["code"]).startswith("60000") and str(item["code"]) in {"600001", "600002", "600003"} else "steel",
+                    "sector_cycle_sensitive": True,
+                    "opportunity_type": "Turnaround" if str(item["code"]) == "600007" else "Cyclical",
+                    "primary_type": "turnaround" if str(item["code"]) == "600007" else "cyclical",
+                    "thesis": "selected",
+                    "next_step": "deep dive now",
+                    "catalysts": [],
+                    "risks": [],
+                    "why_passed": "budgeted",
+                },
+            }
+
+        with patch.object(radar_scan_engine, "_load_universe", return_value=universe):
+            with patch.object(radar_scan_engine, "run_named_scan_steps", side_effect=fake_scan_steps, create=True):
+                with patch.object(radar_scan_engine, "evaluate_partial_gate_dimensions", side_effect=fake_partial_gate, create=True):
+                    with patch.object(radar_scan_engine, "_enrich_partial_result", side_effect=fake_scan_one_stock, create=True):
+                        with patch.object(radar_scan_engine, "generate_market_scan_report", return_value={"report_path": "report.md"}, create=True):
+                            result = radar_scan_engine.run_radar_scan("A-share", limit=3, max_workers_override=1)
+
+        self.assertEqual(result["full_enrichment_count"], 3)
+        self.assertEqual(set(enriched_calls), {"600001", "600002", "600007"})
+        self.assertNotIn("600004", enriched_calls)
+        self.assertNotIn("600005", enriched_calls)
+        self.assertNotIn("600006", enriched_calls)
+
 
 class VCRFEndToEndSmokeTests(unittest.TestCase):
     def test_synthetic_candidate_flows_through_driver_stack_gate_and_valuation_contract(self) -> None:
@@ -1723,6 +2054,25 @@ class VCRFConfigContractTests(unittest.TestCase):
         cfg = load_vcrf_state_machine()
         self.assertEqual(cfg["state_thresholds"]["harvest"]["recognition_upside_max"], -0.05)
 
+    def test_load_yaml_config_caches_parse_but_returns_distinct_copies(self) -> None:
+        from utils import config_loader
+
+        config_loader._load_yaml_config_cached.cache_clear()
+        calls = {"count": 0}
+
+        def fake_safe_load(_handle: object) -> dict[str, object]:
+            calls["count"] += 1
+            return {"demo": {"value": 1}}
+
+        with patch.object(config_loader.yaml, "safe_load", side_effect=fake_safe_load):
+            first = config_loader.load_yaml_config("scoring_rules.yaml")
+            second = config_loader.load_yaml_config("scoring_rules.yaml")
+
+        self.assertEqual(calls["count"], 1)
+        self.assertIsNot(first, second)
+        first["demo"]["value"] = 99
+        self.assertEqual(second["demo"]["value"], 1)
+
 
 class VCRFDataSourceTests(unittest.TestCase):
     def test_akshare_adapter_exposes_cashflow_statement_step(self) -> None:
@@ -1747,6 +2097,33 @@ class VCRFDataSourceTests(unittest.TestCase):
         registry = load_source_registry()
         self.assertIn("us_market", registry)
         self.assertIn("SEC EDGAR Form 4", registry["us_market"]["signals"])
+
+    def test_akshare_scan_step_attaches_source_meta(self) -> None:
+        from adapters import akshare_adapter
+
+        result = akshare_adapter._resolve_scan_step(
+            "600348",
+            "realtime_quote",
+            lambda _stock_code: {
+                "data": {"最新价": 10.0},
+                "status": "ok",
+                "fetch_timestamp": "2026-03-20T09:00:00",
+                "evidence": {
+                    "source_type": "tushare",
+                    "description": "tushare daily snapshot",
+                    "source_url": "https://example.com",
+                    "source_tier": 1,
+                    "confidence": "medium",
+                    "fetch_time": "2026-03-20 09:00:00",
+                },
+            },
+            cached_results={},
+            retry_delays=(),
+        )
+
+        self.assertEqual(result["_source_meta"]["source_type"], "tushare")
+        self.assertEqual(result["_source_meta"]["status"], "ok")
+        self.assertFalse(result["_source_meta"]["used_cache"])
 
 
 class VCRFStateHistoryTests(unittest.TestCase):
@@ -1836,6 +2213,18 @@ class VCRFDriverStackTests(unittest.TestCase):
             revenue_records=[{"主营构成": "煤炭", "主营收入": 85}],
         )
         self.assertEqual(route["sector_route"], "core_resource")
+
+    def test_industry_group_resolves_from_active_sector_classification(self) -> None:
+        from utils.primary_type_router import resolve_industry_group
+
+        group = resolve_industry_group(
+            "600348",
+            {"行业": "煤炭", "主营业务": "煤炭开采与销售"},
+            revenue_records=[{"主营构成": "煤炭", "主营收入": 85}],
+            sector_route="core_resource",
+        )
+        self.assertEqual(group["industry_group"], "coal")
+        self.assertTrue(group["cycle_sensitive"])
 
     def test_turnaround_routing_wins_when_losses_and_repair_evidence_exist(self) -> None:
         from utils.primary_type_router import determine_primary_type
@@ -2162,6 +2551,154 @@ class RuntimeSmokeTests(unittest.TestCase):
             self.assertTrue(report_path.is_relative_to(temp_root))
             self.assertEqual(json.loads(market_scan_path.read_text(encoding="utf-8"))["scope"], "A-share")
 
+    def test_radar_scan_persists_scanner_diagnostics_in_json(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        partial_scan_data = PartialRadarFlowTests()._partial_scan_data_real_keys()
+        enrichment_scan_data = {
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 120_000_000}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 1_000_000_000}]},
+        }
+        partial_gate = {
+            "decidable_hard_vetos": [],
+            "score_upper_bound": 90.0,
+            "dimensions": {
+                "survival": {"confidence": "none", "requires": ["income_statement", "balance_sheet"]},
+                "valuation": {"confidence": "full", "requires": []},
+            },
+        }
+
+        def fake_report(*, report_dir: str, **_: object) -> dict[str, str]:
+            report_path = Path(report_dir) / "market_opportunity_scan.md"
+            report_path.write_text("# smoke\n", encoding="utf-8")
+            return {"report_path": str(report_path)}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch.dict(
+                radar_scan_engine.DEFAULTS,
+                {
+                    "radar_day_cache_enabled": False,
+                    "priority_score_cutoff": 75,
+                    "secondary_score_cutoff": 65,
+                },
+                clear=False,
+            ):
+                with patch.object(radar_scan_engine, "_load_universe", return_value=[{"code": "600348", "name": "测试股份"}]):
+                    with patch.object(radar_scan_engine, "run_named_scan_steps", side_effect=[partial_scan_data, enrichment_scan_data], create=True):
+                        with patch.object(radar_scan_engine, "evaluate_partial_gate_dimensions", return_value=partial_gate, create=True):
+                            with patch.object(radar_scan_engine, "generate_market_scan_report", side_effect=fake_report, create=True):
+                                radar_scan_engine.run_radar_scan("A-share", limit=1, base_dir=temp_root)
+
+            market_scan_path = temp_root / "data" / "processed" / "market_scan" / "market_scan.json"
+            payload = json.loads(market_scan_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(
+            payload["scanner_diagnostics"],
+            {
+                "partial_survivor_count": 1,
+                "full_enrichment_count": 1,
+                "deferred_watchlist_count": 0,
+            },
+        )
+
+    def test_radar_scan_passes_sector_budget_diagnostics_to_report_engine(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+        partial_scan_data = PartialRadarFlowTests()._partial_scan_data_real_keys()
+        enrichment_scan_data = {
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 120_000_000}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 1_000_000_000}]},
+        }
+        partial_gate = {
+            "opportunity_context": {"primary_type": "cyclical", "primary_label": "Cyclical", "sentence": "coal survivor"},
+            "decidable_hard_vetos": [],
+            "blocked_hard_vetos": [],
+            "score_upper_bound": 90.0,
+            "dimensions": {
+                "survival": {"confidence": "none", "requires": ["income_statement", "balance_sheet"]},
+                "business_quality": {"score": 15.0, "max": 20.0, "confidence": "full", "requires": []},
+                "regime_cycle": {"score": 13.0, "max": 15.0, "confidence": "full", "requires": []},
+                "catalyst": {"score": 8.0, "max": 10.0, "confidence": "full", "requires": []},
+                "market_structure": {"score": 4.0, "max": 5.0, "confidence": "full", "requires": []},
+            },
+        }
+        captured: dict[str, object] = {}
+
+        def fake_report(**kwargs: object) -> dict[str, str]:
+            captured.update(kwargs)
+            report_path = Path(kwargs["report_dir"]) / "market_opportunity_scan.md"
+            report_path.write_text("# smoke\n", encoding="utf-8")
+            return {"report_path": str(report_path)}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch.dict(
+                radar_scan_engine.DEFAULTS,
+                {
+                    "radar_day_cache_enabled": False,
+                    "priority_score_cutoff": 75,
+                    "secondary_score_cutoff": 65,
+                },
+                clear=False,
+            ):
+                with patch.object(radar_scan_engine, "_load_universe", return_value=[{"code": "600348", "name": "测试股份", "industry": "煤炭"}]):
+                    with patch.object(radar_scan_engine, "run_named_scan_steps", side_effect=[partial_scan_data, enrichment_scan_data], create=True):
+                        with patch.object(radar_scan_engine, "evaluate_partial_gate_dimensions", return_value=partial_gate, create=True):
+                            with patch.object(radar_scan_engine, "generate_market_scan_report", side_effect=fake_report, create=True):
+                                radar_scan_engine.run_radar_scan("A-share", limit=1, base_dir=temp_root)
+
+        self.assertEqual(captured["scanner_diagnostics"], {"partial_survivor_count": 1, "full_enrichment_count": 1, "deferred_watchlist_count": 0})
+        self.assertEqual(len(captured["sector_snapshot"]), 1)
+
+    def test_radar_scan_skips_failed_partial_workers_instead_of_aborting_whole_scan(self) -> None:
+        radar_scan_engine = _load_radar_scan_engine()
+
+        def fake_partial(item: dict[str, object], **_: object) -> dict[str, object]:
+            if str(item["code"]) == "600001":
+                raise RuntimeError("partial worker boom")
+            return {
+                "kind": "rejected",
+                "order_index": int(item["order_index"]),
+                "payload": {
+                    "ticker": str(item["code"]),
+                    "company_name": str(item["name"]),
+                    "market": "A-share",
+                    "opportunity_type": "Unknown",
+                    "score": 0.0,
+                    "hard_veto": False,
+                    "position_state": "reject",
+                    "underwrite_score": 0.0,
+                    "realization_score": 0.0,
+                    "floor_protection": None,
+                    "recognition_upside": None,
+                    "reason": "prefilter reject",
+                    "next_step": "drop",
+                },
+                "partial_budget_context": {"ticker": str(item["code"])},
+            }
+
+        def fake_report(*, report_dir: str, **_: object) -> dict[str, str]:
+            report_path = Path(report_dir) / "market_opportunity_scan.md"
+            report_path.write_text("# smoke\n", encoding="utf-8")
+            return {"report_path": str(report_path)}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch.dict(radar_scan_engine.DEFAULTS, {"radar_day_cache_enabled": False}, clear=False):
+                with patch.object(
+                    radar_scan_engine,
+                    "_load_universe",
+                    return_value=[{"code": "600001", "name": "坏样本"}, {"code": "600002", "name": "好样本"}],
+                ):
+                    with patch.object(radar_scan_engine, "_scan_partial_stock", side_effect=fake_partial):
+                        with patch.object(radar_scan_engine, "generate_market_scan_report", side_effect=fake_report, create=True):
+                            result = radar_scan_engine.run_radar_scan("A-share", limit=2, base_dir=temp_root, max_workers_override=1)
+
+        self.assertEqual(result["fine_candidate_count"], 1)
+        self.assertEqual(len(result["ranked"]), 1)
+        self.assertEqual(result["ranked"][0]["ticker"], "600002")
+        self.assertEqual(len(result["scan_errors"]), 1)
+        self.assertIn("partial worker boom", result["scan_errors"][0])
+
     def test_deep_dive_writes_outputs_to_base_dir(self) -> None:
         module_path = SHARED_DIR.parent / "single-stock-deep-dive" / "scripts" / "engines" / "deep_sniper_engine.py"
         spec = importlib.util.spec_from_file_location("deep_sniper_engine_under_test", module_path)
@@ -2214,6 +2751,138 @@ class RuntimeSmokeTests(unittest.TestCase):
             self.assertTrue(report_path.exists())
             self.assertTrue(report_path.is_relative_to(temp_root))
             self.assertEqual(json.loads(result_path.read_text(encoding="utf-8"))["stock_code"], "600328")
+
+    def test_deep_dive_skips_tier0_autofill_when_pdf_index_is_error(self) -> None:
+        module_path = SHARED_DIR.parent / "single-stock-deep-dive" / "scripts" / "engines" / "deep_sniper_engine.py"
+        spec = importlib.util.spec_from_file_location("deep_sniper_engine_under_test_step_contract", module_path)
+        deep_sniper_engine = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(deep_sniper_engine)
+
+        scan_data = {
+            "company_profile": {"data": {"行业": "钢铁", "主营业务": "钢铁冶炼", "股票简称": "测试股份"}},
+            "revenue_breakdown": {"data": [{"报告期": "20241231", "主营构成": "钢铁", "主营收入": 92}]},
+            "realtime_quote": {"data": {"最新价": 10.0, "总市值": 8_000_000_000}},
+            "income_statement": {"data": [{"报告期": "20241231", "归属于母公司所有者的净利润": 120_000_000}]},
+            "balance_sheet": {"data": [{"报告期": "20241231", "归属于母公司所有者权益合计": 1_000_000_000}]},
+        }
+        gate_result = {
+            "driver_stack": {"primary_type": "compounder", "sector_route": "consumer"},
+            "underwrite_axis": {"score": 70},
+            "realization_axis": {"score": 50},
+            "position_state": "ready",
+            "prev_state": "NEW",
+            "transition_reason": "smoke",
+            "flow_stage": "latent",
+            "scorecard": {"verdict": "reasonable candidate / starter possible"},
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch.object(deep_sniper_engine, "run_full_scan", return_value=scan_data, create=True):
+                with patch.object(deep_sniper_engine, "run_tier0_prep", return_value={"checklist": {"checklist": []}}, create=True):
+                    with patch.object(deep_sniper_engine, "download_tier0_report_pack", return_value={"status": "ok", "downloaded_files": []}, create=True):
+                        with patch.object(deep_sniper_engine, "run_pdf_index", return_value={"status": "error: bad pdf index"}, create=True):
+                            with patch.object(deep_sniper_engine, "run_docling_page_parse", return_value={"status": "skipped"}, create=True):
+                                with patch.object(deep_sniper_engine, "run_tier0_autofill", side_effect=AssertionError("autofill should not run"), create=True):
+                                    with patch.object(deep_sniper_engine, "evaluate_universal_gates", return_value=gate_result, create=True):
+                                        with patch.object(deep_sniper_engine, "build_three_case_valuation", return_value={"summary": {}}, create=True):
+                                            with patch.object(deep_sniper_engine, "build_investment_synthesis", return_value={"bottom_line": "smoke"}, create=True):
+                                                with patch.object(
+                                                    deep_sniper_engine,
+                                                    "generate_deep_dive_report",
+                                                    return_value={"report_path": str(temp_root / "report.md")},
+                                                    create=True,
+                                                ):
+                                                    result = deep_sniper_engine.deep_sniper(
+                                                        "600328",
+                                                        "测试股份",
+                                                        include_tier0=True,
+                                                        base_dir=temp_root,
+                                                    )
+
+        self.assertEqual(result["step_statuses"]["tier0_pdf_index"], "error")
+        self.assertEqual(result["step_statuses"]["tier0_autofill"], "empty")
+        self.assertEqual(result["tier0_autofill"], {})
+
+
+class SectorOverlayValidationScriptTests(unittest.TestCase):
+    def test_validate_sector_overlay_writes_variant_summary(self) -> None:
+        module = _load_sector_overlay_validation_module()
+
+        signals = pd.DataFrame(
+            [
+                {"ticker": "600001", "signal_date": "2026-01-31", "vcrf_state": "ATTACK", "tradable_flag": 1},
+                {"ticker": "600002", "signal_date": "2026-01-31", "vcrf_state": "ATTACK", "tradable_flag": 1},
+            ]
+        )
+        daily_bars = pd.DataFrame(
+            [
+                {"ticker": "600001", "date": "2026-02-03", "open": 10.0, "high": 10.5, "low": 9.8, "close": 10.2},
+                {"ticker": "600002", "date": "2026-02-03", "open": 8.0, "high": 8.2, "low": 7.9, "close": 8.1},
+            ]
+        )
+
+        def fake_backtest(month_end: pd.DataFrame, bars: pd.DataFrame, *, protocol: dict[str, object] | None = None) -> dict[str, object]:
+            self.assertEqual(len(month_end), 2)
+            self.assertEqual(len(bars), 2)
+            overlay_cfg = (protocol or {}).get("sector_overlay", {}) or {}
+            if overlay_cfg.get("enabled") and int(overlay_cfg.get("max_positions_per_industry_group", 0) or 0) == 1:
+                variant = "overlay_gate_diversified"
+            elif overlay_cfg.get("enabled"):
+                variant = "overlay_gate"
+            elif float(overlay_cfg.get("sector_score_weight", 0.0) or 0.0) > 0:
+                variant = "overlay_rank"
+            else:
+                variant = "baseline"
+
+            score_map = {
+                "baseline": (0.10, 0.20, 0.30, 0.10),
+                "overlay_rank": (0.12, 0.25, 0.25, 0.08),
+                "overlay_gate": (0.16, 0.33, 0.12, 0.04),
+                "overlay_gate_diversified": (0.18, 0.35, 0.10, 0.03),
+            }
+            portfolio_cagr, target_hit_rate, max_loss_stop_rate, state_reject_rate = score_map[variant]
+            return {
+                "rounds": [{"round_id": 1}],
+                "selected_candidates": pd.DataFrame([{"ticker": "600001", "round_id": 1, "slot_in_round": 1}]),
+                "summary": pd.DataFrame(
+                    [
+                        {
+                            "round_id": 1,
+                            "portfolio_cagr": portfolio_cagr,
+                            "target_hit_rate": target_hit_rate,
+                            "max_loss_stop_rate": max_loss_stop_rate,
+                            "state_reject_rate": state_reject_rate,
+                            "peak_gross_exposure_ratio": 0.9,
+                            "tickers": ["600001"],
+                        }
+                    ]
+                ),
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            out_dir = Path(temp_dir)
+            with patch.object(module, "run_vcrf_backtest", side_effect=fake_backtest):
+                result = module.run_overlay_validation(
+                    month_end_signals=signals,
+                    daily_bars=daily_bars,
+                    out_dir=out_dir,
+                )
+
+            summary_path = out_dir / "variant_summary.csv"
+            self.assertTrue(summary_path.exists())
+            summary_df = pd.read_csv(summary_path)
+
+        self.assertEqual(
+            sorted(summary_df["variant"].tolist()),
+            ["baseline", "overlay_gate", "overlay_gate_diversified", "overlay_rank"],
+        )
+        self.assertIn("avg_portfolio_cagr", summary_df.columns)
+        self.assertIn("avg_target_hit_rate", summary_df.columns)
+        self.assertIn("avg_max_loss_stop_rate", summary_df.columns)
+        self.assertIn("avg_state_reject_rate", summary_df.columns)
+        self.assertEqual(Path(result["variant_summary"]), summary_path)
 
 
 class VendorCompatibilityTests(unittest.TestCase):
